@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 
+    Google Drive API Configuration
+    You need to replace the placeholder values with your actual Google API credentials
+    
+    Steps to get credentials:
+    1. Go to Google Cloud Console (console.cloud.google.com)
+    2. Create a new project or select existing one
+    3. Enable Google Drive API
+    4. Create OAuth 2.0 Client ID for Android application
+    5. Add your app's package name: com.example.expensetracker
+    6. Add your app's SHA-1 fingerprint (use: keytool -list -v)
+    7. Download the configuration file
+    
+    Replace the placeholder values below with your actual credentials
+    -->
+    
+    <string name="default_web_client_id" translatable="false">YOUR_WEB_CLIENT_ID_HERE</string>
+    <string name="gcm_defaultSenderId" translatable="false">YOUR_SENDER_ID_HERE</string>
+    <string name="google_api_key" translatable="false">YOUR_API_KEY_HERE</string>
+    <string name="google_app_id" translatable="false">YOUR_APP_ID_HERE</string>
+    <string name="google_storage_bucket" translatable="false">YOUR_STORAGE_BUCKET_HERE</string>
+</resources>

@@ -167,10 +167,12 @@ class MainActivity : ComponentActivity() {
                 var viewingCategoryFilter by remember { mutableStateOf<String?>(null) }
                 var viewingSubcategoryFilter by remember { mutableStateOf<String?>(null) }
                 var viewingExpenseIdFilter by remember { mutableStateOf<String?>(null) }
+                var viewingGroupIdFilter by remember { mutableStateOf<String?>(null) }
                 var viewingLabelFilter by remember { mutableStateOf<String?>(null) }
 
                 var expenseToEdit by remember { mutableStateOf<Expense?>(null) }
                 var groupToEdit by remember { mutableStateOf<List<Expense>?>(null) }
+                var initialDateForNewExpense by remember { mutableStateOf<LocalDate?>(null) }
 
                 // Lifted settings state for categories, subcategories, and labels
                 val categories = remember { mutableStateListOf(*initialData.categories.toTypedArray()) }
@@ -182,6 +184,8 @@ class MainActivity : ComponentActivity() {
                     map
                 }
                 val labels = remember { mutableStateListOf(*initialData.labels.toTypedArray()) }
+                val paymentModes = remember { mutableStateListOf(*initialData.paymentModes.toTypedArray()) }
+                val paidVia = remember { mutableStateListOf(*initialData.paidVia.toTypedArray()) }
 
                 val storeHistory = remember { mutableStateListOf(*initialData.storeHistory.toTypedArray()) }
 
@@ -196,6 +200,8 @@ class MainActivity : ComponentActivity() {
                             categories = categories.toList(),
                             subcategoriesMap = subcategoriesMap.mapValues { it.value.toList() },
                             labels = labels.toList(),
+                            paymentModes = paymentModes.toList(),
+                            paidVia = paidVia.toList(),
                             categoryBudgets = categoryBudgets.toMap(),
                             subcategoryBudgets = subcategoryBudgets.toMap(),
                             storeHistory = storeHistory.toList(),
@@ -217,6 +223,7 @@ class MainActivity : ComponentActivity() {
 
                 // Sync state
                 var isSignedIn by remember { mutableStateOf(false) }
+                var isSyncing by remember { mutableStateOf(false) }
                 var showSyncMessage by remember { mutableStateOf("") }
                 var showSyncError by remember { mutableStateOf(false) }
                 val coroutineScope = rememberCoroutineScope()
@@ -269,6 +276,7 @@ class MainActivity : ComponentActivity() {
                                     viewingSubcategoryFilter = null
                                     viewingLabelFilter = null
                                     viewingExpenseIdFilter = null
+                                    viewingGroupIdFilter = null
                                 }
                                 if (it != Screen.AddExpense) {
                                     expenseToEdit = null
@@ -329,6 +337,17 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigateToExpenseDetails = { id ->
                                     viewingExpenseIdFilter = id
+                                    viewingGroupIdFilter = null
+                                    viewingDateFilter = null
+                                    viewingStartDateFilter = null
+                                    viewingEndDateFilter = null
+                                    viewingCategoryFilter = null
+                                    viewingSubcategoryFilter = null
+                                    currentScreen = Screen.ExpenseList
+                                },
+                                onNavigateToGroupDetails = { groupId ->
+                                    viewingGroupIdFilter = groupId
+                                    viewingExpenseIdFilter = null
                                     viewingDateFilter = null
                                     viewingStartDateFilter = null
                                     viewingEndDateFilter = null
@@ -337,6 +356,12 @@ class MainActivity : ComponentActivity() {
                                     currentScreen = Screen.ExpenseList
                                 },
                                 onNavigateToBudget = { currentScreen = Screen.Budget },
+                                onNewExpense = { date ->
+                                    expenseToEdit = null
+                                    groupToEdit = null
+                                    initialDateForNewExpense = date
+                                    currentScreen = Screen.AddExpense
+                                },
                                 isDarkTheme = isDarkTheme,
                                 onThemeToggle = { isDarkTheme = !isDarkTheme }
                             )
@@ -358,6 +383,7 @@ class MainActivity : ComponentActivity() {
                                 initialSubcategory = viewingSubcategoryFilter,
                                 initialLabel = viewingLabelFilter,
                                 initialSelectedExpenseId = viewingExpenseIdFilter,
+                                initialSelectedGroupId = viewingGroupIdFilter,
                                 onClearFilter = { 
                                     viewingDateFilter = null
                                     viewingStartDateFilter = null
@@ -366,6 +392,7 @@ class MainActivity : ComponentActivity() {
                                     viewingSubcategoryFilter = null
                                     viewingLabelFilter = null
                                     viewingExpenseIdFilter = null
+                                    viewingGroupIdFilter = null
                                 },
                                 onAddExpense = { 
                                     expenseToEdit = null
@@ -383,7 +410,7 @@ class MainActivity : ComponentActivity() {
                                     }
                                     currentScreen = Screen.AddExpense
                                 },
-                                onDeleteExpense = { expense: Expense -> globalExpenses.remove(expense) }
+                                onDeleteExpense = { expense: Expense -> globalExpenses.removeAll { it.id == expense.id } }
                             )
                             }
                             Screen.Settings -> SettingsScreen(
@@ -457,6 +484,14 @@ class MainActivity : ComponentActivity() {
                                 onAddLabel = { label: String -> labels.add(label) },
                                 onEditLabel = { index: Int, newValue: String -> labels[index] = newValue },
                                 onDeleteLabel = { index: Int -> labels.removeAt(index) },
+                                paymentModes = paymentModes,
+                                onAddPaymentMode = { mode: String -> paymentModes.add(mode) },
+                                onEditPaymentMode = { index: Int, newValue: String -> paymentModes[index] = newValue },
+                                onDeletePaymentMode = { index: Int -> paymentModes.removeAt(index) },
+                                paidVia = paidVia,
+                                onAddPaidVia = { method: String -> paidVia.add(method) },
+                                onEditPaidVia = { index: Int, newValue: String -> paidVia[index] = newValue },
+                                onDeletePaidVia = { index: Int -> paidVia.removeAt(index) },
                                 context = context,
                                 onSignIn = { 
                                     val signInIntent = syncService.getGoogleSignInClient().signInIntent
@@ -470,6 +505,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onUploadBackup = {
                                     coroutineScope.launch {
+                                        isSyncing = true
                                         val result = syncService.uploadToDrive()
                                         result.fold(
                                             onSuccess = { 
@@ -481,10 +517,12 @@ class MainActivity : ComponentActivity() {
                                                 showSyncError = true
                                             }
                                         )
+                                        isSyncing = false
                                     }
                                 },
                                 onDownloadBackup = { fileId ->
                                     coroutineScope.launch {
+                                        isSyncing = true
                                         val result = syncService.downloadFromDrive(fileId)
                                         result.fold(
                                             onSuccess = { 
@@ -506,10 +544,12 @@ class MainActivity : ComponentActivity() {
                                                 showSyncError = true
                                             }
                                         )
+                                        isSyncing = false
                                     }
                                 },
                                 onViewBackups = {
                                     coroutineScope.launch {
+                                        isSyncing = true
                                         val result = syncService.listAvailableBackups()
                                         result.fold(
                                             onSuccess = { backups ->
@@ -562,6 +602,7 @@ class MainActivity : ComponentActivity() {
                                                 showSyncError = true
                                             }
                                         )
+                                        isSyncing = false
                                     }
                                 },
                                 isSignedIn = isSignedIn,
@@ -613,9 +654,12 @@ class MainActivity : ComponentActivity() {
                                 categories = categories,
                                 subcategoriesMap = subcategoriesMap,
                                 labels = labels,
+                                paymentModes = paymentModes,
+                                paidVia = paidVia,
                                 storeHistory = storeHistory.toList(),
                                 expenseToEdit = expenseToEdit,
                                 groupToEdit = groupToEdit,
+                                initialDate = initialDateForNewExpense,
                                 onSave = { newExpenses ->
                                     val gid = expenseToEdit?.groupId ?: groupToEdit?.firstOrNull()?.groupId
                                     if (gid != null) {
@@ -624,11 +668,13 @@ class MainActivity : ComponentActivity() {
                                     globalExpenses.addAll(newExpenses)
                                     expenseToEdit = null
                                     groupToEdit = null
+                                    initialDateForNewExpense = null
                                     currentScreen = Screen.Dashboard
                                 },
                                 onBack = {
                                     expenseToEdit = null
                                     groupToEdit = null
+                                    initialDateForNewExpense = null
                                     currentScreen = Screen.Dashboard
                                 },
                                 onAddCategory = { name ->
@@ -640,6 +686,12 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onAddLabel = { name ->
                                     labels.add(name)
+                                },
+                                onAddPaymentMode = { mode ->
+                                    paymentModes.add(mode)
+                                },
+                                onAddPaidVia = { method ->
+                                    paidVia.add(method)
                                 },
                                 onUpdateStoreHistory = { newStore ->
                                     // Add store to history if not already present (add to front)
@@ -704,6 +756,17 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigateToExpenseDetails = { id ->
                                     viewingExpenseIdFilter = id
+                                    viewingGroupIdFilter = null
+                                    viewingDateFilter = null
+                                    viewingStartDateFilter = null
+                                    viewingEndDateFilter = null
+                                    viewingCategoryFilter = null
+                                    viewingSubcategoryFilter = null
+                                    currentScreen = Screen.ExpenseList
+                                },
+                                onNavigateToGroupDetails = { groupId ->
+                                    viewingGroupIdFilter = groupId
+                                    viewingExpenseIdFilter = null
                                     viewingDateFilter = null
                                     viewingStartDateFilter = null
                                     viewingEndDateFilter = null
@@ -712,6 +775,12 @@ class MainActivity : ComponentActivity() {
                                     currentScreen = Screen.ExpenseList
                                 },
                                 onNavigateToBudget = { currentScreen = Screen.Budget },
+                                onNewExpense = { date ->
+                                    expenseToEdit = null
+                                    groupToEdit = null
+                                    initialDateForNewExpense = date
+                                    currentScreen = Screen.AddExpense
+                                },
                                 isDarkTheme = isDarkTheme,
                                 onThemeToggle = { isDarkTheme = !isDarkTheme }
                             )
@@ -736,6 +805,48 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onDismiss = { showClearDataDialog = false }
                             )
+                        }
+
+                        // Sync Progress Overlay
+                        if (isSyncing) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.3f))
+                                    .clickable(enabled = false) {},
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .background(MaterialTheme.colorScheme.surface)
+                                        .border(4.dp, Color.Black)
+                                        .padding(24.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Text(
+                                        text = "SYNCING DATA...",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 16.sp,
+                                        color = Color.Black
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    LinearProgressIndicator(
+                                        modifier = Modifier
+                                            .width(200.dp)
+                                            .height(16.dp)
+                                            .border(2.dp, Color.Black),
+                                        color = Color.Black,
+                                        trackColor = Color.White
+                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(
+                                        text = "PLEASE WAIT",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        color = Color.Black
+                                    )
+                                }
+                            }
                         }
                     }
                     
@@ -771,7 +882,7 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
-    }
+}
 
 @Composable
 fun BottomBar(currentScreen: Screen, onScreenSelected: (Screen) -> Unit) {
@@ -1241,7 +1352,9 @@ fun DashboardScreen(
     onNavigateToYearExpenses: (Int, TrendDimension, String?) -> Unit,
     onNavigateToCategory: (String, String?, YearMonth?) -> Unit,
     onNavigateToExpenseDetails: (String) -> Unit,
+    onNavigateToGroupDetails: (String) -> Unit,
     onNavigateToBudget: () -> Unit,
+    onNewExpense: (LocalDate) -> Unit,
     isDarkTheme: Boolean = false,
     onThemeToggle: () -> Unit = {}
 ) {
@@ -1252,6 +1365,7 @@ fun DashboardScreen(
     var selectedCategoryForSub by remember { mutableStateOf<String?>(null) }
     var selectedTrendValue by remember { mutableStateOf<Float?>(null) }
     var selectedTrendPeriod by remember { mutableStateOf<Any?>(null) }
+    var recentByGroup by remember { mutableStateOf(true) }
 
     val availableItems = remember(expenses, trendDimension, selectedCategoryForSub) {
         when (trendDimension) {
@@ -1297,7 +1411,16 @@ fun DashboardScreen(
         expenses.groupBy { it.date }.mapValues { entry -> entry.value.sumOf { it.amount } }
     }
     val totalSpent = remember(monthlyExpenses) { monthlyExpenses.sumOf { it.amount } }
-    val recent = remember(expenses) { expenses.sortedByDescending { it.date }.take(10) }
+    val recentGroups = remember(expenses) {
+        expenses.groupBy { it.groupId }
+            .values
+            .sortedByDescending { it.first().date }
+            .take(10)
+    }
+    val recentItems = remember(expenses) {
+        expenses.sortedByDescending { it.date }.take(10)
+    }
+    val recentCount = if (recentByGroup) recentGroups.size else recentItems.size
     val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy", java.util.Locale.getDefault())
 
     val themeBlack = MaterialTheme.colorScheme.onSurface
@@ -1346,10 +1469,11 @@ fun DashboardScreen(
             // Calendar at top
             BrutalistCalendar(
                 expenses = expensesMap,
-                modifier = Modifier.fillMaxWidth().height(280.dp),
+                modifier = Modifier.fillMaxWidth().wrapContentHeight(),
                 viewedMonth = viewedMonth,
                 onMonthChanged = { viewedMonth = it },
-                onViewExpensesForDate = onNavigateToExpenses
+                onViewExpensesForDate = onNavigateToExpenses,
+                onNewExpenseForDate = onNewExpense
             )
             
             Spacer(modifier = Modifier.height(16.dp))
@@ -1388,11 +1512,34 @@ fun DashboardScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text("RECENT", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = themeBlack)
-                    Text("${recent.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = themeBlack.copy(alpha = 0.5f))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("RECENT", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = themeBlack)
+                        
+                        // Toggle Button
+                        Row(modifier = Modifier.border(1.dp, themeBlack)) {
+                            listOf(true to "GRP", false to "ITM").forEach { (isGroup, label) ->
+                                Box(
+                                    modifier = Modifier
+                                        .height(24.dp)
+                                        .background(if (recentByGroup == isGroup) themeBlack else themeWhite)
+                                        .clickable { recentByGroup = isGroup }
+                                        .padding(horizontal = 6.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        label,
+                                        color = if (recentByGroup == isGroup) themeWhite else themeBlack,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Text("$recentCount", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = themeBlack.copy(alpha = 0.5f))
                 }
                 
-                if (recent.isEmpty()) {
+                if (recentCount == 0) {
                     Box(modifier = Modifier.fillMaxWidth().height(200.dp).border(2.dp, themeBlack, RectangleShape), contentAlignment = Alignment.Center) {
                         Text("EMPTY", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.3f))
                     }
@@ -1401,25 +1548,51 @@ fun DashboardScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
-                        recent.take(5).forEach { expense ->
-                            val title = if (expense.itemDescription.isNotEmpty()) expense.itemDescription else expense.storeName
-                            BrutalistCard(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onNavigateToExpenseDetails(expense.id) },
-                                backgroundColor = themeWhite,
-                                borderColor = themeBlack
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                        if (recentByGroup) {
+                            recentGroups.forEach { group ->
+                                val first = group.first()
+                                val total = group.sumOf { it.amount }
+                                BrutalistCard(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onNavigateToGroupDetails(first.groupId) },
+                                    backgroundColor = themeWhite,
+                                    borderColor = themeBlack
                                 ) {
-                                    Column(modifier = Modifier.weight(1f).padding(end = 4.dp)) {
-                                        Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = themeBlack)
-                                        Text(expense.category.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha = 0.5f))
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f).padding(end = 4.dp)) {
+                                            Text(first.storeName, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = themeBlack)
+                                            Text("${group.size} ITEMS • ${first.category.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha = 0.5f))
+                                        }
+                                        Text("₹${String.format("%.0f", total)}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = themeBlack)
                                     }
-                                    Text("₹${String.format("%.0f", expense.amount)}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = themeBlack)
+                                }
+                            }
+                        } else {
+                            recentItems.take(5).forEach { expense ->
+                                val title = if (expense.itemDescription.isNotEmpty()) expense.itemDescription else expense.storeName
+                                BrutalistCard(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onNavigateToExpenseDetails(expense.id) },
+                                    backgroundColor = themeWhite,
+                                    borderColor = themeBlack
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f).padding(end = 4.dp)) {
+                                            Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = themeBlack)
+                                            Text(expense.category.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha = 0.5f))
+                                        }
+                                        Text("₹${String.format("%.0f", expense.amount)}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = themeBlack)
+                                    }
                                 }
                             }
                         }
@@ -1673,7 +1846,7 @@ fun DashboardScreen(
         } else {
             // Tablet/landscape mode: keep current layout
             Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).height(340.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp).height(420.dp),
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                     BrutalistCalendar(
@@ -1681,7 +1854,8 @@ fun DashboardScreen(
                         modifier = Modifier.weight(1f).fillMaxHeight(),
                         viewedMonth = viewedMonth,
                         onMonthChanged = { viewedMonth = it },
-                        onViewExpensesForDate = onNavigateToExpenses
+                        onViewExpensesForDate = onNavigateToExpenses,
+                        onNewExpenseForDate = onNewExpense
                     )
 
                     Row(
@@ -1795,11 +1969,35 @@ fun DashboardScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("RECENT", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = themeBlack)
-                        Text("${recent.size}", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = themeBlack.copy(alpha = 0.5f))
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            Text("RECENT", fontWeight = FontWeight.Bold, fontSize = 22.sp, color = themeBlack)
+                            
+                            // Toggle Button
+                            Row(modifier = Modifier.border(1.dp, themeBlack)) {
+                                listOf(true to "GROUP", false to "ITEMS").forEach { (isGroup, label) ->
+                                    Box(
+                                        modifier = Modifier
+                                            .height(28.dp)
+                                            .background(if (recentByGroup == isGroup) themeBlack else themeWhite)
+                                            .clickable { recentByGroup = isGroup }
+                                            .padding(horizontal = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        @Suppress("DEPRECATION")
+                                        Text(
+                                            label,
+                                            color = if (recentByGroup == isGroup) themeWhite else themeBlack,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Black
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        Text("$recentCount", fontWeight = FontWeight.Bold, fontSize = 14.sp, color = themeBlack.copy(alpha = 0.5f))
                     }
                     
-                    if (recent.isEmpty()) {
+                    if (recentCount == 0) {
                         Box(modifier = Modifier.fillMaxSize().border(2.dp, themeBlack, RectangleShape), contentAlignment = Alignment.Center) {
                             Text("EMPTY", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.3f))
                         }
@@ -1808,25 +2006,51 @@ fun DashboardScreen(
                             modifier = Modifier.weight(1f).verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            recent.take(10).forEach { expense ->
-                                val title = if (expense.itemDescription.isNotEmpty()) expense.itemDescription else expense.storeName
-                                BrutalistCard(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable { onNavigateToExpenseDetails(expense.id) },
-                                    backgroundColor = themeWhite,
-                                    borderColor = themeBlack
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                            if (recentByGroup) {
+                                recentGroups.forEach { group ->
+                                    val first = group.first()
+                                    val total = group.sumOf { it.amount }
+                                    BrutalistCard(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onNavigateToGroupDetails(first.groupId) },
+                                        backgroundColor = themeWhite,
+                                        borderColor = themeBlack
                                     ) {
-                                        Column(modifier = Modifier.weight(1f).padding(end = 4.dp)) {
-                                            Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = themeBlack)
-                                            Text(expense.category.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha = 0.5f))
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f).padding(end = 4.dp)) {
+                                                Text(first.storeName, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = themeBlack)
+                                                Text("${group.size} ITEMS • ${first.category.uppercase()}", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha = 0.5f))
+                                            }
+                                            Text("₹${String.format("%.0f", total)}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = themeBlack)
                                         }
-                                        Text("₹${String.format("%.0f", expense.amount)}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = themeBlack)
+                                    }
+                                }
+                            } else {
+                                recentItems.forEach { expense ->
+                                    val title = if (expense.itemDescription.isNotEmpty()) expense.itemDescription else expense.storeName
+                                    BrutalistCard(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { onNavigateToExpenseDetails(expense.id) },
+                                        backgroundColor = themeWhite,
+                                        borderColor = themeBlack
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp).fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f).padding(end = 4.dp)) {
+                                                Text(title, fontWeight = FontWeight.Bold, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, color = themeBlack)
+                                                Text(expense.category.uppercase(), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha = 0.5f))
+                                            }
+                                            Text("₹${String.format("%.0f", expense.amount)}", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = themeBlack)
+                                        }
                                     }
                                 }
                             }
@@ -1881,20 +2105,11 @@ fun DashboardScreen(
                                     .height(38.dp)
                                     .background(themeBlack)
                                     .border(2.dp, themeWhite)
-                                    .clickable {
-                                        selectedTrendPeriod?.let { period ->
-                                            if (period is YearMonth) {
-                                                onNavigateToMonthExpenses(period, trendDimension, trendItem)
-                                            } else if (period is Int) {
-                                                onNavigateToYearExpenses(period, trendDimension, trendItem)
-                                            }
-                                        }
-                                    }
-                                    .padding(horizontal = 12.dp),
+                                    .clickable { selectedTrendValue = null },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = "₹${String.format("%.0f", selectedTrendValue!!)}",
+                                    text = selectedTrendValue.toString(),
                                     color = themeWhite,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Black
@@ -2001,10 +2216,10 @@ fun DashboardScreen(
                     )
                 }
             }
+        }
     }
 }
 
-}
 @Composable
 fun ExpenseListScreen(
     expenses: List<Expense>,
@@ -2016,6 +2231,7 @@ fun ExpenseListScreen(
     initialSubcategory: String? = null,
     initialLabel: String? = null,
     initialSelectedExpenseId: String? = null,
+    initialSelectedGroupId: String? = null,
     onClearFilter: () -> Unit = {},
     onAddExpense: () -> Unit = {},
     onEditExpense: (Expense) -> Unit = {},
@@ -2042,7 +2258,7 @@ fun ExpenseListScreen(
     var filtersExpanded by remember { mutableStateOf(false) }
 
     // Sync filters if initial state changes from external navigation
-    LaunchedEffect(viewingDate, initialStartDate, initialEndDate, initialCategory, initialSubcategory, initialLabel, initialSelectedExpenseId) {
+    LaunchedEffect(viewingDate, initialStartDate, initialEndDate, initialCategory, initialSubcategory, initialLabel, initialSelectedExpenseId, initialSelectedGroupId) {
         if (initialCategory != null) {
             filterCategories = setOf(initialCategory)
         }
@@ -2073,6 +2289,22 @@ fun ExpenseListScreen(
                 
                 viewByStore = false
                 selectedExpense = found
+            }
+        }
+        
+        if (initialSelectedGroupId != null) {
+            val group = expenses.filter { it.groupId == initialSelectedGroupId }
+            if (group.isNotEmpty()) {
+                // Clear filters to ensure the group is in the filtered list
+                startDateFilter = null
+                endDateFilter = null
+                exactDateFilter = null
+                filterCategories = emptySet()
+                filterSubcategories = emptySet()
+                filterLabels = emptySet()
+                
+                viewByStore = true
+                selectedGroup = group
             }
         }
     }
@@ -2115,7 +2347,7 @@ fun ExpenseListScreen(
     val displayExpenses = filteredExpenses.filter { expense ->
         if (filterLabels.isNotEmpty() && filterLabels.intersect(expense.labels.toSet()).isEmpty()) return@filter false
         true
-    }
+    }.sortedByDescending { it.date }
 
     val groupedExpenses = displayExpenses
         .groupBy { it.groupId }
@@ -2168,34 +2400,70 @@ fun ExpenseListScreen(
                                 Spacer(modifier = Modifier.height(8.dp))
                                 
                                 group.forEachIndexed { i, subTx ->
-                                    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
-                                        Text("ITEM ${i+1}", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    BrutalistCard(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp), backgroundColor = themeWhite) {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Text("ITEM ${i+1}", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = themeBlack, modifier = Modifier.padding(bottom = 8.dp))
+                                            
+                                            // Item description
                                             val desc = if (subTx.itemDescription.isNotEmpty()) subTx.itemDescription else subTx.category
-                                            Text(desc, fontSize = 14.sp, modifier = Modifier.weight(1f))
-                                            Text("₹${String.format("%.0f", subTx.amount)}", fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.padding(start = 8.dp))
-                                        }
-                                        Text("${subTx.category} • ${subTx.subcategory}", fontSize = 12.sp, color = themeBlack.copy(alpha=0.7f))
-                                        if (subTx.labels.isNotEmpty()) {
-                                            Text(subTx.labels.joinToString(", ").uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.5f))
-                                        }
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            BrutalistButton(
-                                                onClick = { onEditExpense(subTx) },
-                                                modifier = Modifier.weight(1f).height(48.dp),
-                                                containerColor = themeWhite
-                                            ) {
-                                                Text("EDIT", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = themeBlack)
+                                            Text(desc, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = themeBlack, modifier = Modifier.padding(bottom = 4.dp))
+                                            
+                                            // Amount and quantity
+                                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text("₹${String.format("%.2f", subTx.amount)}", fontWeight = FontWeight.Black, fontSize = 18.sp, color = themeBlack)
+                                                    if (subTx.quantity != null && subTx.quantity > 0) {
+                                                        val quantityText = if (subTx.unit != null) "${subTx.quantity} ${subTx.unit}" else subTx.quantity.toString()
+                                                        Text(quantityText, fontSize = 12.sp, color = themeBlack.copy(alpha=0.7f))
+                                                    }
+                                                }
                                             }
-                                            BrutalistButton(
-                                                onClick = { expenseToDelete = subTx },
-                                                modifier = Modifier.weight(1f).height(48.dp),
-                                                containerColor = themeBlack
+                                            
+                                            // Category and subcategory
+                                            Text("${subTx.category} / ${subTx.subcategory}", fontSize = 12.sp, fontWeight = FontWeight.Medium, color = themeBlack.copy(alpha=0.8f), modifier = Modifier.padding(bottom = 4.dp))
+                                            
+                                            // Labels
+                                            if (subTx.labels.isNotEmpty()) {
+                                                @Suppress("DEPRECATION")
+                                                Text(subTx.labels.joinToString(", ").uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f), modifier = Modifier.padding(bottom = 4.dp))
+                                            }
+                                            
+                                            // Payment info
+                                            if (!subTx.paymentMode.isNullOrBlank() || !subTx.paidVia.isNullOrBlank()) {
+                                                val paymentInfo = listOfNotNull(
+                                                    subTx.paymentMode.takeIf { !it.isNullOrBlank() },
+                                                    subTx.paidVia.takeIf { !it.isNullOrBlank() }
+                                                ).joinToString(" • ")
+                                                Text(paymentInfo, fontSize = 10.sp, color = themeBlack.copy(alpha=0.7f), modifier = Modifier.padding(bottom = 4.dp))
+                                            }
+                                            
+                                            // Notes
+                                            if (subTx.notes.isNotBlank()) {
+                                                Text(subTx.notes, fontSize = 11.sp, color = themeBlack.copy(alpha=0.8f), modifier = Modifier.padding(bottom = 8.dp))
+                                            }
+                                            
+                                            // Action buttons
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Text("DELETE", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = themeWhite)
+                                                BrutalistButton(
+                                                    onClick = { onEditExpense(subTx) },
+                                                    modifier = Modifier.weight(1f).height(36.dp),
+                                                    containerColor = themeBlack
+                                                ) {
+                                                    Text("EDIT", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = themeWhite)
+                                                }
+                                                BrutalistButton(
+                                                    onClick = {
+                                                        android.util.Log.d("ExpenseListScreen", "DELETE button clicked for expense: ${subTx.id}")
+                                                        expenseToDelete = subTx
+                                                    },
+                                                    modifier = Modifier.weight(1f).height(36.dp),
+                                                    containerColor = themeWhite
+                                                ) {
+                                                    Text("DELETE", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = themeBlack)
+                                                }
                                             }
                                         }
                                     }
@@ -2208,11 +2476,14 @@ fun ExpenseListScreen(
                             Column(modifier = Modifier.padding(16.dp).verticalScroll(rememberScrollState())) {
                                 Text("EXPENSE DETAILS", fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, color = themeBlack, modifier = Modifier.padding(bottom = 16.dp))
 
+                                // Basic Information Section
+                                Text("BASIC INFO", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = themeBlack.copy(alpha=0.7f), modifier = Modifier.padding(bottom = 8.dp))
+                                
                                 val title = if (expense.itemDescription.isNotEmpty()) expense.itemDescription else expense.storeName
-                                Text("ITEM", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
-                                Text(title, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
+                                Text("ITEM DESCRIPTION", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
+                                Text(title.ifEmpty { "No description" }, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
 
-                                Text("STORE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
+                                Text("STORE NAME", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
                                 Text(expense.storeName, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
 
                                 Text("DATE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
@@ -2221,19 +2492,51 @@ fun ExpenseListScreen(
                                 Text("CATEGORY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
                                 Text("${expense.category} / ${expense.subcategory}", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
 
+                                // Amount and Quantity Section
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("FINANCIAL INFO", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = themeBlack.copy(alpha=0.7f), modifier = Modifier.padding(bottom = 8.dp))
+                                
                                 Text("AMOUNT", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
-                                Text("₹${String.format("%.0f", expense.amount)}", fontSize = 32.sp, fontWeight = FontWeight.Black, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
+                                Text("₹${String.format("%.2f", expense.amount)}", fontSize = 28.sp, fontWeight = FontWeight.Black, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
+
+                                if (expense.quantity != null && expense.quantity > 0) {
+                                    Text("QUANTITY", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
+                                    val quantityText = if (expense.unit != null) "${expense.quantity} ${expense.unit}" else expense.quantity.toString()
+                                    Text(quantityText, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
+                                }
+
+                                // Payment Information Section
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("PAYMENT INFO", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = themeBlack.copy(alpha=0.7f), modifier = Modifier.padding(bottom = 8.dp))
+                                
+                                if (!expense.paymentMode.isNullOrBlank()) {
+                                    Text("PAYMENT MODE", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
+                                    Text(expense.paymentMode, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
+                                }
+
+                                if (!expense.paidVia.isNullOrBlank()) {
+                                    Text("PAID VIA", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
+                                    Text(expense.paidVia, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
+                                }
+
+                                // Additional Information Section
+                                if (expense.labels.isNotEmpty() || !expense.notes.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text("ADDITIONAL INFO", fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, color = themeBlack.copy(alpha=0.7f), modifier = Modifier.padding(bottom = 8.dp))
+                                }
 
                                 if (expense.labels.isNotEmpty()) {
                                     Text("LABELS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
+                                    @Suppress("DEPRECATION")
                                     Text(expense.labels.joinToString(", ").uppercase(), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
                                 }
 
-                                if (expense.notes.isNotBlank()) {
+                                if (!expense.notes.isNullOrBlank()) {
                                     Text("NOTES", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
-                                    Text(expense.notes, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
+                                    Text(expense.notes ?: "", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
                                 }
 
+                                
                                 Spacer(modifier = Modifier.height(24.dp))
 
                                 Row(
@@ -2248,10 +2551,14 @@ fun ExpenseListScreen(
                                         Text("EDIT", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = themeBlack)
                                     }
                                     BrutalistButton(
-                                        onClick = { expenseToDelete = expense },
+                                        onClick = {
+                                            android.util.Log.d("ExpenseListScreen", "DELETE button clicked for expense: ${expense.id}")
+                                            expenseToDelete = expense
+                                        },
                                         modifier = Modifier.weight(1f).height(56.dp),
                                         containerColor = themeBlack
                                     ) {
+                                        @Suppress("DEPRECATION")
                                         Text("DELETE", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = themeWhite)
                                     }
                                 }
@@ -2290,6 +2597,11 @@ fun ExpenseListScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            if (viewingDate != null || initialCategory != null || initialSubcategory != null) {
+                                BrutalistButton(onClick = onClearFilter, containerColor = themeWhite, modifier = Modifier.height(48.dp)) {
+                                    Text("CLEAR", color = themeBlack, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                                }
+                            }
                             BrutalistSearchField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
@@ -2349,7 +2661,7 @@ fun ExpenseListScreen(
                                     },
                                     modifier = Modifier.fillMaxWidth()
                                 )
-                                Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     BrutalistButton(onClick = { showExactDatePicker = true }, modifier = Modifier.weight(1f), containerColor = themeWhite) {
                                         Text(exactDateFilter?.format(dateFormatter) ?: "EXACT DATE", color = themeBlack, fontSize = 12.sp)
                                     }
@@ -2358,6 +2670,24 @@ fun ExpenseListScreen(
                                             "${startDateFilter!!.format(dateFormatter)} - ${endDateFilter!!.format(dateFormatter)}"
                                         } else "DATE RANGE"
                                         Text(ranTxt, color = themeBlack, fontSize = 12.sp)
+                                    }
+                                }
+                                if (exactDateFilter != null || startDateFilter != null || filterCategories.isNotEmpty() || filterSubcategories.isNotEmpty() || filterLabels.isNotEmpty() || searchQuery.isNotBlank()) {
+                                    BrutalistButton(
+                                        onClick = {
+                                            exactDateFilter = null
+                                            startDateFilter = null
+                                            endDateFilter = null
+                                            filterCategories = emptySet()
+                                            filterSubcategories = emptySet()
+                                            filterLabels = emptySet()
+                                            searchQuery = ""
+                                            onClearFilter()
+                                        },
+                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                                        containerColor = themeWhite
+                                    ) {
+                                        Text("CLEAR FILTERS", color = themeBlack, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
@@ -2569,31 +2899,6 @@ fun ExpenseListScreen(
             }
         }
 
-        if (showExactDatePicker) {
-            BrutalistDatePickerDialog(
-                onDismissRequest = { showExactDatePicker = false },
-                onDateSelected = { millis ->
-                    if (millis != null) {
-                        exactDateFilter = Instant.ofEpochMilli(millis).atZone(ZoneId.of("UTC")).toLocalDate()
-                        startDateFilter = null
-                        endDateFilter = null
-                    }
-                }
-            )
-        }
-
-        if (showRangeDatePicker) {
-            BrutalistDateRangePickerDialog(
-                onDismissRequest = { showRangeDatePicker = false },
-                onDateRangeSelected = { start, end ->
-                    if (start != null && end != null) {
-                        startDateFilter = Instant.ofEpochMilli(start).atZone(ZoneId.of("UTC")).toLocalDate()
-                        endDateFilter = Instant.ofEpochMilli(end).atZone(ZoneId.of("UTC")).toLocalDate()
-                        exactDateFilter = null
-                    }
-                }
-            )
-        }
 
         Row(
             modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
@@ -2700,7 +3005,7 @@ fun ExpenseListScreen(
                             }
                         }
                     } else {
-                        items(displayExpenses.sortedByDescending { it.date }) { expense ->
+                        items(displayExpenses) { expense ->
                             val isSelected = expense == selectedExpense
                             BrutalistCard(
                                 modifier = Modifier
@@ -2773,7 +3078,10 @@ fun ExpenseListScreen(
                                                 Text("EDIT", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = themeBlack)
                                             }
                                             BrutalistButton(
-                                                onClick = { expenseToDelete = subTx },
+                                                onClick = {
+                                                    android.util.Log.d("ExpenseListScreen", "DELETE button clicked for expense: ${subTx.id}")
+                                                    expenseToDelete = subTx
+                                                },
                                                 modifier = Modifier.weight(1f).height(48.dp),
                                                 containerColor = themeBlack
                                             ) {
@@ -2818,9 +3126,9 @@ fun ExpenseListScreen(
                                     }
 
                                     Column(modifier = Modifier.weight(1f)) {
-                                        if (expense.notes.isNotBlank()) {
+                                        if (!expense.notes.isNullOrBlank()) {
                                             Text("NOTES", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha=0.6f))
-                                            Text(expense.notes, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
+                                            Text(expense.notes ?: "", fontSize = 14.sp, fontWeight = FontWeight.Medium, color = themeBlack, modifier = Modifier.padding(bottom = 12.dp))
                                         }
                                     }
                                 }
@@ -2839,7 +3147,10 @@ fun ExpenseListScreen(
                                         Text("EDIT", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = themeBlack)
                                     }
                                     BrutalistButton(
-                                        onClick = { expenseToDelete = expense },
+                                        onClick = {
+                                            android.util.Log.d("ExpenseListScreen", "DELETE button clicked for expense: ${expense.id}")
+                                            expenseToDelete = expense
+                                        },
                                         modifier = Modifier.weight(1f).height(56.dp),
                                         containerColor = themeBlack
                                     ) {
@@ -2863,50 +3174,79 @@ fun ExpenseListScreen(
                     }
                 }
             }
+
+        }
+    }
+
+    // Date Picker Dialogs
+    if (showExactDatePicker) {
+            BrutalistDatePickerDialog(
+                onDismissRequest = { showExactDatePicker = false },
+                onDateSelected = { millis ->
+                    if (millis != null) {
+                        exactDateFilter = Instant.ofEpochMilli(millis).atZone(ZoneId.of("UTC")).toLocalDate()
+                        startDateFilter = null
+                        endDateFilter = null
+                    }
+                }
+            )
         }
 
-        // Delete Confirmation Dialog
-        if (expenseToDelete != null) {
-            AlertDialog(
-                onDismissRequest = { expenseToDelete = null },
-                title = { Text("CONFIRM DELETE", fontWeight = FontWeight.ExtraBold) },
-                text = { 
-                    Text(
-                        "Are you sure you want to delete this expense?\n\n" +
-                        "Store: ${expenseToDelete!!.storeName}\n" +
-                        "Item: ${if (expenseToDelete!!.itemDescription.isNotEmpty()) expenseToDelete!!.itemDescription else expenseToDelete!!.category}\n" +
-                        "Amount: ₹${String.format("%.2f", expenseToDelete!!.amount)}"
-                    ) 
-                },
-                confirmButton = {
-                    BrutalistButton(
-                        onClick = {
-                            onDeleteExpense(expenseToDelete!!)
-                            expenseToDelete = null
-                            selectedGroup = null
-                            selectedExpense = null
-                        },
-                        containerColor = themeBlack
-                    ) {
-                        Text("DELETE", color = themeWhite, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    BrutalistButton(
-                        onClick = { expenseToDelete = null },
-                        containerColor = themeWhite
-                    ) {
-                        Text("CANCEL", color = themeBlack, fontWeight = FontWeight.Bold)
+        if (showRangeDatePicker) {
+            BrutalistDateRangePickerDialog(
+                onDismissRequest = { showRangeDatePicker = false },
+                onDateRangeSelected = { start, end ->
+                    if (start != null && end != null) {
+                        startDateFilter = Instant.ofEpochMilli(start).atZone(ZoneId.of("UTC")).toLocalDate()
+                        endDateFilter = Instant.ofEpochMilli(end).atZone(ZoneId.of("UTC")).toLocalDate()
+                        exactDateFilter = null
                     }
                 }
             )
         }
     }
+
+    // Delete Confirmation Dialog (after Column closes)
+    if (expenseToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { expenseToDelete = null },
+            title = { Text("CONFIRM DELETE", fontWeight = FontWeight.ExtraBold) },
+            text = {
+                Text(
+                    "Are you sure you want to delete this expense?\n\n" +
+                    "Store: ${expenseToDelete!!.storeName}\n" +
+                    "Item: ${if (expenseToDelete!!.itemDescription.isNotEmpty()) expenseToDelete!!.itemDescription else expenseToDelete!!.category}\n" +
+                    "Amount: ₹${String.format("%.2f", expenseToDelete!!.amount)}"
+                )
+            },
+            confirmButton = {
+                BrutalistButton(
+                    onClick = {
+                        android.util.Log.d("ExpenseListScreen", "Confirming delete for expense: ${expenseToDelete!!.id}")
+                        onDeleteExpense(expenseToDelete!!)
+                        expenseToDelete = null
+                        selectedGroup = null
+                        selectedExpense = null
+                    },
+                    containerColor = themeBlack
+                ) {
+                    Text("DELETE", color = themeWhite, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                BrutalistButton(
+                    onClick = { expenseToDelete = null },
+                    containerColor = themeWhite
+                ) {
+                    Text("CANCEL", color = themeBlack, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
 }
 
 // ── Settings Screen with Three Parallel Columns ──────────────────────────────
 
-}
 @Composable
 fun SettingsScreen(
     isMobilePortrait: Boolean = false,
@@ -2922,6 +3262,14 @@ fun SettingsScreen(
     onAddLabel: (String) -> Unit,
     onEditLabel: (Int, String) -> Unit,
     onDeleteLabel: (Int) -> Unit,
+    paymentModes: List<String>,
+    onAddPaymentMode: (String) -> Unit,
+    onEditPaymentMode: (Int, String) -> Unit,
+    onDeletePaymentMode: (Int) -> Unit,
+    paidVia: List<String>,
+    onAddPaidVia: (String) -> Unit,
+    onEditPaidVia: (Int, String) -> Unit,
+    onDeletePaidVia: (Int) -> Unit,
     context: Context,
     onSignIn: () -> Unit,
     onSignOut: () -> Unit,
@@ -3014,6 +3362,32 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth(),
                 isLazy = false
             )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Payment Modes management section below labels
+            ManageableColumn(
+                title = "PAYMENT MODES",
+                items = paymentModes,
+                onAdd = onAddPaymentMode,
+                onEdit = onEditPaymentMode,
+                onDelete = onDeletePaymentMode,
+                modifier = Modifier.fillMaxWidth(),
+                isLazy = false
+            )
+            
+            Spacer(modifier = Modifier.height(24.dp))
+            
+            // Paid Via management section below payment modes
+            ManageableColumn(
+                title = "PAID VIA",
+                items = paidVia,
+                onAdd = onAddPaidVia,
+                onEdit = onEditPaidVia,
+                onDelete = onDeletePaidVia,
+                modifier = Modifier.fillMaxWidth(),
+                isLazy = false
+            )
         } else {
             // Tablet/landscape mode: keep current layout
             Text(
@@ -3046,40 +3420,72 @@ fun SettingsScreen(
             
             Spacer(modifier = Modifier.height(16.dp))
             
-            // Three parallel columns
-            Row(
+            // Five parallel columns
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .weight(1f)
             ) {
-                ManageableColumn(
-                    title = "CATEGORIES",
-                    items = categories,
-                    onAdd = onAddCategory,
-                    onEdit = onEditCategory,
-                    onDelete = onDeleteCategory,
-                    selectedIndex = categories.indexOf(selectedCategory),
-                    onItemSelected = { index -> selectedCategory = categories[index] },
-                    modifier = Modifier.weight(1f)
-                )
-                ManageableColumn(
-                    title = "SUBCATEGORIES",
-                    items = currentSubcategories,
-                    onAdd = { name -> selectedCategory?.let { cat -> onAddSubcategory(cat, name) } },
-                    onEdit = { index, newValue -> selectedCategory?.let { cat -> onEditSubcategory(cat, index, newValue) } },
-                    onDelete = { index -> selectedCategory?.let { cat -> onDeleteSubcategory(cat, index) } },
-                    parentLabel = selectedCategory,
-                    modifier = Modifier.weight(1f)
-                )
-                ManageableColumn(
-                    title = "LABELS",
-                    items = labels,
-                    onAdd = onAddLabel,
-                    onEdit = onEditLabel,
-                    onDelete = onDeleteLabel,
-                    modifier = Modifier.weight(1f)
-                )
+                // First row: Categories, Subcategories, Labels
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ManageableColumn(
+                        title = "CATEGORIES",
+                        items = categories,
+                        onAdd = onAddCategory,
+                        onEdit = onEditCategory,
+                        onDelete = onDeleteCategory,
+                        selectedIndex = categories.indexOf(selectedCategory),
+                        onItemSelected = { index: Int -> selectedCategory = categories[index] },
+                        modifier = Modifier.weight(1f)
+                    )
+                    ManageableColumn(
+                        title = "SUBCATEGORIES",
+                        items = currentSubcategories,
+                        onAdd = { name -> selectedCategory?.let { cat -> onAddSubcategory(cat, name) } },
+                        onEdit = { index, newValue -> selectedCategory?.let { cat -> onEditSubcategory(cat, index, newValue) } },
+                        onDelete = { index: Int -> selectedCategory?.let { cat -> onDeleteSubcategory(cat, index) } },
+                        parentLabel = selectedCategory,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ManageableColumn(
+                        title = "LABELS",
+                        items = labels,
+                        onAdd = onAddLabel,
+                        onEdit = onEditLabel,
+                        onDelete = onDeleteLabel,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                // Second row: Payment Modes, Paid Via
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ManageableColumn(
+                        title = "PAYMENT MODES",
+                        items = paymentModes,
+                        onAdd = onAddPaymentMode,
+                        onEdit = onEditPaymentMode,
+                        onDelete = onDeletePaymentMode,
+                        modifier = Modifier.weight(1f)
+                    )
+                    ManageableColumn(
+                        title = "PAID VIA",
+                        items = paidVia,
+                        onAdd = onAddPaidVia,
+                        onEdit = onEditPaidVia,
+                        onDelete = onDeletePaidVia,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Spacer(modifier = Modifier.weight(1f)) // Empty space to balance layout
+                }
             }
         }
 

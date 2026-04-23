@@ -15,5 +15,7 @@ data class Expense(
     val labels: List<String> = emptyList(),
     val quantity: Double? = null,
     val unit: String? = null,
-    val notes: String = ""
+    val notes: String = "",
+    val paymentMode: String = "",
+    val paidVia: String = ""
 )

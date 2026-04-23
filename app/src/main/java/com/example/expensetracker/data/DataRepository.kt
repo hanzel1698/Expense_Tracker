@@ -23,6 +23,8 @@ data class AppData(
         "Shopping" to listOf("Clothing", "Electronics", "Home")
     ),
     val labels: List<String> = listOf("Personal", "Business", "Urgent", "Recurring", "One-time"),
+    val paymentModes: List<String> = listOf("Cash", "Credit Card", "Debit Card", "UPI", "Net Banking", "Wallet"),
+    val paidVia: List<String> = listOf("Google Pay", "PhonePe", "Paytm", "Amazon Pay", "BHIM", "Other"),
     val categoryBudgets: Map<String, Double> = mapOf(
         "Food" to 200.0,
         "Utilities" to 150.0,

@@ -41,7 +41,9 @@ data class SubTransaction(
     var labels: List<String> = emptyList(),
     var quantity: String = "",
     var unit: String = "",
-    var notes: String = ""
+    var notes: String = "",
+    var paymentMode: String = "",
+    var paidVia: String = ""
 )
 
 @Composable
@@ -50,6 +52,8 @@ fun ExpenseEntryScreen(
     categories: List<String>,
     subcategoriesMap: Map<String, List<String>>,
     labels: List<String>,
+    paymentModes: List<String>,
+    paidVia: List<String>,
     storeHistory: List<String> = emptyList(),
     expenseToEdit: Expense? = null,
     groupToEdit: List<Expense>? = null,
@@ -58,17 +62,22 @@ fun ExpenseEntryScreen(
     onAddCategory: (String) -> Unit = {},
     onAddSubcategory: (String, String) -> Unit = { _, _ -> },
     onAddLabel: (String) -> Unit = {},
-    onUpdateStoreHistory: (String) -> Unit = {}
+    onAddPaymentMode: (String) -> Unit = {},
+    onAddPaidVia: (String) -> Unit = {},
+    onUpdateStoreHistory: (String) -> Unit = {},
+    initialDate: LocalDate? = null
 ) {
     val initialStoreName = remember { expenseToEdit?.storeName ?: groupToEdit?.firstOrNull()?.storeName ?: "" }
     val initialTotalAmount = remember { expenseToEdit?.amount?.toString() ?: "" }
     val initialMainCategory = remember { expenseToEdit?.category ?: "" }
     val initialMainSubcategory = remember { expenseToEdit?.subcategory ?: "" }
     val initialSelectedLabels = remember { expenseToEdit?.labels?.toList() ?: emptyList<String>() }
+    val initialMainPaymentMode = remember { expenseToEdit?.paymentMode ?: "" }
+    val initialMainPaidVia = remember { expenseToEdit?.paidVia ?: "" }
     val initialIsSplit = remember { groupToEdit != null && (groupToEdit.size > 1) }
     val initialQuantity = remember { expenseToEdit?.quantity?.toString() ?: groupToEdit?.firstOrNull()?.quantity?.toString() ?: "" }
     val initialUnit = remember { expenseToEdit?.unit ?: groupToEdit?.firstOrNull()?.unit ?: "" }
-    val initialDate = remember { expenseToEdit?.date ?: groupToEdit?.firstOrNull()?.date ?: LocalDate.now() }
+    val initialDateValue = remember { initialDate ?: expenseToEdit?.date ?: groupToEdit?.firstOrNull()?.date ?: LocalDate.now() }
     val initialSubTransactions = remember {
         groupToEdit?.mapIndexed { index, e ->
             SubTransaction(
@@ -80,7 +89,9 @@ fun ExpenseEntryScreen(
                 labels = e.labels,
                 quantity = e.quantity?.toString() ?: "",
                 unit = e.unit ?: "",
-                notes = e.notes ?: ""
+                notes = e.notes ?: "",
+                paymentMode = e.paymentMode,
+                paidVia = e.paidVia
             )
         } ?: listOf(SubTransaction(1))
     }
@@ -96,6 +107,8 @@ fun ExpenseEntryScreen(
 
     var mainCategory by remember { mutableStateOf(initialMainCategory) }
     var mainSubcategory by remember { mutableStateOf(initialMainSubcategory) }
+    var mainPaymentMode by remember { mutableStateOf(initialMainPaymentMode) }
+    var mainPaidVia by remember { mutableStateOf(initialMainPaidVia) }
 
     val selectedLabels = remember {
         mutableStateListOf<String>().apply {
@@ -110,7 +123,7 @@ fun ExpenseEntryScreen(
     var expandedSplitId by remember { mutableStateOf<Int?>(subTransactions.firstOrNull()?.id) }
 
     var showExitConfirmation by remember { mutableStateOf(false) }
-    var selectedDate by remember { mutableStateOf(initialDate) }
+    var selectedDate by remember { mutableStateOf(initialDateValue) }
     var showDatePicker by remember { mutableStateOf(false) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy") }
 
@@ -118,9 +131,13 @@ fun ExpenseEntryScreen(
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showAddSubcategoryDialog by remember { mutableStateOf(false) }
     var showAddLabelDialog by remember { mutableStateOf(false) }
+    var showAddPaymentModeDialog by remember { mutableStateOf(false) }
+    var showAddPaidViaDialog by remember { mutableStateOf(false) }
     var newCategoryName by remember { mutableStateOf("") }
     var newSubcategoryName by remember { mutableStateOf("") }
     var newLabelName by remember { mutableStateOf("") }
+    var newPaymentModeName by remember { mutableStateOf("") }
+    var newPaidViaName by remember { mutableStateOf("") }
     var editingSplitIndex by remember { mutableStateOf<Int?>(null) }
 
     // Calculator state
@@ -149,10 +166,12 @@ fun ExpenseEntryScreen(
                 notes != initialNotes ||
                 mainCategory != initialMainCategory ||
                 mainSubcategory != initialMainSubcategory ||
+                mainPaymentMode != initialMainPaymentMode ||
+                mainPaidVia != initialMainPaidVia ||
                 selectedLabels.toList() != initialSelectedLabels ||
                 isSplit != initialIsSplit ||
                 subTransactions != initialSubTransactions ||
-                selectedDate != initialDate
+                selectedDate != initialDateValue
     }
 
     // Calculator helper functions
@@ -234,7 +253,9 @@ fun ExpenseEntryScreen(
                     labels = subTx.labels.ifEmpty { selectedLabels.toList() },
                     quantity = subTx.quantity.toDoubleOrNull(),
                     unit = subTx.unit.ifEmpty { null },
-                    notes = subTx.notes.ifEmpty { notes }
+                    notes = subTx.notes.ifEmpty { notes },
+                    paymentMode = subTx.paymentMode.ifEmpty { mainPaymentMode },
+                    paidVia = subTx.paidVia.ifEmpty { mainPaidVia }
                 )
             }
         } else if (isSplit && subTransactions.size == 1) {
@@ -251,7 +272,9 @@ fun ExpenseEntryScreen(
                     labels = subTx.labels.ifEmpty { selectedLabels.toList() },
                     quantity = subTx.quantity.toDoubleOrNull(),
                     unit = subTx.unit.ifEmpty { null },
-                    notes = subTx.notes.ifEmpty { notes }
+                    notes = subTx.notes.ifEmpty { notes },
+                    paymentMode = subTx.paymentMode.ifEmpty { mainPaymentMode },
+                    paidVia = subTx.paidVia.ifEmpty { mainPaidVia }
                 )
             )
         } else {
@@ -267,7 +290,9 @@ fun ExpenseEntryScreen(
                     labels = selectedLabels.toList(),
                     quantity = quantity.toDoubleOrNull(),
                     unit = unit.ifEmpty { null },
-                    notes = notes
+                    notes = notes,
+                    paymentMode = mainPaymentMode,
+                    paidVia = mainPaidVia
                 )
             )
         }
@@ -469,6 +494,114 @@ fun ExpenseEntryScreen(
                                     }
                                     showAddLabelDialog = false
                                     newLabelName = ""
+                                    editingSplitIndex = null
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("ADD", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Add new payment mode dialog ─────────────────────────────────────────────
+    if (showAddPaymentModeDialog) {
+        Dialog(onDismissRequest = { showAddPaymentModeDialog = false }) {
+            BrutalistCard(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("NEW PAYMENT MODE", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    BrutalistTextField(
+                        value = newPaymentModeName,
+                        onValueChange = { newPaymentModeName = it },
+                        label = "Payment Mode Name"
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        BrutalistButton(
+                            onClick = {
+                                showAddPaymentModeDialog = false
+                                newPaymentModeName = ""
+                                editingSplitIndex = null
+                            },
+                            modifier = Modifier.weight(1f),
+                            containerColor = White
+                        ) {
+                            Text("CANCEL", color = Black, fontWeight = FontWeight.Bold)
+                        }
+                        BrutalistButton(
+                            onClick = {
+                                if (newPaymentModeName.isNotBlank()) {
+                                    onAddPaymentMode(newPaymentModeName)
+                                    if (editingSplitIndex != null) {
+                                        subTransactions = subTransactions.toMutableList().apply {
+                                            this[editingSplitIndex!!] = this[editingSplitIndex!!].copy(paymentMode = newPaymentModeName)
+                                        }
+                                    } else {
+                                        mainPaymentMode = newPaymentModeName
+                                    }
+                                    showAddPaymentModeDialog = false
+                                    newPaymentModeName = ""
+                                    editingSplitIndex = null
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("ADD", fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Add new paid via dialog ─────────────────────────────────────────────────
+    if (showAddPaidViaDialog) {
+        Dialog(onDismissRequest = { showAddPaidViaDialog = false }) {
+            BrutalistCard(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text("NEW PAID VIA", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    BrutalistTextField(
+                        value = newPaidViaName,
+                        onValueChange = { newPaidViaName = it },
+                        label = "Paid Via Name"
+                    )
+                    Spacer(modifier = Modifier.height(20.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        BrutalistButton(
+                            onClick = {
+                                showAddPaidViaDialog = false
+                                newPaidViaName = ""
+                                editingSplitIndex = null
+                            },
+                            modifier = Modifier.weight(1f),
+                            containerColor = White
+                        ) {
+                            Text("CANCEL", color = Black, fontWeight = FontWeight.Bold)
+                        }
+                        BrutalistButton(
+                            onClick = {
+                                if (newPaidViaName.isNotBlank()) {
+                                    onAddPaidVia(newPaidViaName)
+                                    if (editingSplitIndex != null) {
+                                        subTransactions = subTransactions.toMutableList().apply {
+                                            this[editingSplitIndex!!] = this[editingSplitIndex!!].copy(paidVia = newPaidViaName)
+                                        }
+                                    } else {
+                                        mainPaidVia = newPaidViaName
+                                    }
+                                    showAddPaidViaDialog = false
+                                    newPaidViaName = ""
                                     editingSplitIndex = null
                                 }
                             },
@@ -835,6 +968,41 @@ fun ExpenseEntryScreen(
                 )
             }
 
+            // ── Payment Mode + Paid Via inline (non-split mode) ─────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                BrutalistDropdown(
+                    label = "PAYMENT MODE",
+                    options = paymentModes + "+ Add New",
+                    selectedOption = mainPaymentMode,
+                    onOptionSelected = {
+                        if (it == "+ Add New") {
+                            showAddPaymentModeDialog = true
+                        } else {
+                            mainPaymentMode = it
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+                BrutalistDropdown(
+                    label = "PAID VIA",
+                    options = paidVia + "+ Add New",
+                    selectedOption = mainPaidVia,
+                    onOptionSelected = {
+                        if (it == "+ Add New") {
+                            showAddPaidViaDialog = true
+                        } else {
+                            mainPaidVia = it
+                        }
+                    },
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
             // ── Notes field ─────────────────────────────────────────────────────
             BrutalistTextField(
                 value = notes,
@@ -865,7 +1033,14 @@ fun ExpenseEntryScreen(
                             subTransactions[0].copy(
                                 category = mainCategory,
                                 subcategory = mainSubcategory,
-                                labels = selectedLabels.toList()
+                                amount = totalAmount,
+                                description = description,
+                                labels = selectedLabels.toList(),
+                                quantity = quantity,
+                                unit = unit,
+                                notes = notes,
+                                paymentMode = mainPaymentMode,
+                                paidVia = mainPaidVia
                             )
                         )
                     }
@@ -1035,6 +1210,47 @@ fun ExpenseEntryScreen(
                             )
                         }
 
+                        // Payment Mode + Paid Via inline (split mode)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            BrutalistDropdown(
+                                label = "PAYMENT MODE",
+                                options = paymentModes + "+ Add New",
+                                selectedOption = subTx.paymentMode,
+                                onOptionSelected = {
+                                    if (it == "+ Add New") {
+                                        editingSplitIndex = index
+                                        showAddPaymentModeDialog = true
+                                    } else {
+                                        subTransactions = subTransactions.toMutableList().apply {
+                                            this[index] = subTx.copy(paymentMode = it)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                            BrutalistDropdown(
+                                label = "PAID VIA",
+                                options = paidVia + "+ Add New",
+                                selectedOption = subTx.paidVia,
+                                onOptionSelected = {
+                                    if (it == "+ Add New") {
+                                        editingSplitIndex = index
+                                        showAddPaidViaDialog = true
+                                    } else {
+                                        subTransactions = subTransactions.toMutableList().apply {
+                                            this[index] = subTx.copy(paidVia = it)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
                         // Notes field
                         BrutalistTextField(
                             value = subTx.notes,
@@ -1096,7 +1312,9 @@ fun ExpenseEntryScreen(
                         id = nextId,
                         category = mainCategory,
                         subcategory = mainSubcategory,
-                        labels = selectedLabels.toList()
+                        labels = selectedLabels.toList(),
+                        paymentMode = mainPaymentMode,
+                        paidVia = mainPaidVia
                     )
                     expandedSplitId = nextId
                 },

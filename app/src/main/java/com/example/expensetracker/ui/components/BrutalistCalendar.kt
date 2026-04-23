@@ -41,7 +41,8 @@ fun BrutalistCalendar(
     modifier: Modifier = Modifier,
     viewedMonth: YearMonth = YearMonth.now(),
     onMonthChanged: (YearMonth) -> Unit = {},
-    onViewExpensesForDate: ((LocalDate) -> Unit)? = null
+    onViewExpensesForDate: ((LocalDate) -> Unit)? = null,
+    onNewExpenseForDate: ((LocalDate) -> Unit)? = null
 ) {
     val today = remember { LocalDate.now() }
     var selectedDate by remember { mutableStateOf<LocalDate?>(null) }
@@ -74,7 +75,12 @@ fun BrutalistCalendar(
                         Text("VIEW EXPENSES", color = themeWhite, fontWeight = FontWeight.Black)
                     }
                     com.example.expensetracker.ui.components.BrutalistButton(
-                        onClick = { actionMenuDate = null },
+                        onClick = { 
+                            if (actionMenuDate != null) {
+                                onNewExpenseForDate?.invoke(actionMenuDate!!)
+                            }
+                            actionMenuDate = null 
+                        },
                         modifier = Modifier.fillMaxWidth(),
                         containerColor = themeWhite
                     ) {
@@ -134,7 +140,7 @@ fun BrutalistCalendar(
 
             // Days of week header
             Row(modifier = Modifier.fillMaxWidth()) {
-                val daysOfWeek = listOf("MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN")
+                val daysOfWeek = listOf("SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT")
                 daysOfWeek.forEach { day ->
                     Text(
                         text = day,
@@ -169,8 +175,8 @@ private fun FullMonthGrid(
     val firstOfMonth = month.atDay(1)
     val lastOfMonth = month.atEndOfMonth()
     
-    val startOfGrid = firstOfMonth.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-    val endOfGrid = lastOfMonth.with(TemporalAdjusters.nextOrSame(DayOfWeek.SUNDAY))
+    val startOfGrid = firstOfMonth.with(TemporalAdjusters.previousOrSame(DayOfWeek.SUNDAY))
+    val endOfGrid = lastOfMonth.with(TemporalAdjusters.nextOrSame(DayOfWeek.SATURDAY))
     
     var currentDate = startOfGrid
     val dates = mutableListOf<LocalDate>()

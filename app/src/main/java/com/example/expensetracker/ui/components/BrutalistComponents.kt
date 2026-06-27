@@ -26,6 +26,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import com.example.expensetracker.ui.theme.Black
 import com.example.expensetracker.ui.theme.White
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.window.PopupProperties
 
 @Composable
 fun BrutalistCard(
@@ -53,6 +56,7 @@ fun BrutalistButton(
     enabled: Boolean = true,
     containerColor: Color = MaterialTheme.colorScheme.onSurface,
     contentColor: Color = MaterialTheme.colorScheme.surface,
+    contentPadding: PaddingValues = ButtonDefaults.ContentPadding,
     content: @Composable () -> Unit
 ) {
     Button(
@@ -61,7 +65,8 @@ fun BrutalistButton(
         enabled = enabled,
         shape = RectangleShape,
         colors = ButtonDefaults.buttonColors(containerColor = containerColor, contentColor = contentColor),
-        border = BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface)
+        border = BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface),
+        contentPadding = contentPadding
     ) {
         content()
     }
@@ -76,7 +81,8 @@ fun BrutalistTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     singleLine: Boolean = true,
     readOnly: Boolean = false,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    trailingIcon: @Composable (() -> Unit)? = null
 ) {
     val textColor = MaterialTheme.colorScheme.onSurface
     val containerColor = MaterialTheme.colorScheme.surface
@@ -92,6 +98,7 @@ fun BrutalistTextField(
         singleLine = singleLine,
         readOnly = readOnly,
         textStyle = TextStyle(color = textColor, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
+        trailingIcon = trailingIcon,
         colors = TextFieldDefaults.colors(
             focusedContainerColor = containerColor,
             unfocusedContainerColor = containerColor,
@@ -165,10 +172,32 @@ fun BrutalistMultiSelectDropdown(
     options: List<String>,
     selectedOptions: Set<String>,
     onOptionToggled: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    showSearch: Boolean = false
 ) {
     var expanded by remember { mutableStateOf(false) }
-    val displaySelected = if (selectedOptions.isEmpty()) "All" else selectedOptions.joinToString(", ")
+    var searchQuery by remember { mutableStateOf("") }
+    
+    LaunchedEffect(expanded) {
+        if (!expanded) {
+            searchQuery = ""
+        }
+    }
+
+    val displaySelected = if (selectedOptions.isEmpty()) "All" 
+    else if (selectedOptions.size <= 2) selectedOptions.joinToString(", ")
+    else "${selectedOptions.size} selected"
+
+    val filteredOptions = remember(options, searchQuery, showSearch) {
+        if (!showSearch || searchQuery.isEmpty()) {
+            options
+        } else {
+            val hasAddNew = options.contains("+ Add New")
+            val coreOptions = options.filter { it != "+ Add New" }
+            val filtered = coreOptions.filter { it.contains(searchQuery, ignoreCase = true) }
+            if (hasAddNew) filtered + "+ Add New" else filtered
+        }
+    }
 
     ExposedDropdownMenuBox(
         expanded = expanded,
@@ -179,9 +208,15 @@ fun BrutalistMultiSelectDropdown(
             value = displaySelected,
             onValueChange = {},
             readOnly = true,
-            label = { Text(label, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
+            label = {
+                if (label.isNotEmpty()) {
+                    Text(label, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                }
+            },
             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor().fillMaxWidth(),
+            modifier = Modifier
+                .menuAnchor()
+                .fillMaxWidth(),
             shape = RectangleShape,
             singleLine = true,
             textStyle = TextStyle(color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp, fontWeight = FontWeight.SemiBold),
@@ -196,12 +231,27 @@ fun BrutalistMultiSelectDropdown(
             )
         )
 
-        ExposedDropdownMenu(
+        DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.background(MaterialTheme.colorScheme.surface).border(BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface))
+            properties = PopupProperties(focusable = true),
+            modifier = Modifier
+                .exposedDropdownSize()
+                .background(MaterialTheme.colorScheme.surface)
+                .border(BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface))
         ) {
-            options.forEach { selectionOption ->
+            if (showSearch) {
+                BrutalistSearchField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = "Search labels...",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
+
+            filteredOptions.forEach { selectionOption ->
                 val isSelected = selectedOptions.contains(selectionOption)
                 val textColor = MaterialTheme.colorScheme.onSurface
                 DropdownMenuItem(

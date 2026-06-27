@@ -15,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -27,6 +28,7 @@ import com.example.expensetracker.ui.components.BrutalistMultiSelectDropdown
 import com.example.expensetracker.ui.components.BrutalistTextField
 import com.example.expensetracker.ui.components.BrutalistDatePickerDialog
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.expensetracker.ui.theme.Black
 import com.example.expensetracker.ui.theme.White
 import java.time.LocalDate
@@ -42,13 +44,13 @@ data class SubTransaction(
     var quantity: String = "",
     var unit: String = "",
     var notes: String = "",
-    var paymentMode: String = "",
-    var paidVia: String = ""
+    var baseAmount: String = "",
+    var gstPercentage: String = "",
+    var gstAmount: String = ""
 )
 
 @Composable
 fun ExpenseEntryScreen(
-    isMobilePortrait: Boolean = false,
     categories: List<String>,
     subcategoriesMap: Map<String, List<String>>,
     labels: List<String>,
@@ -68,6 +70,7 @@ fun ExpenseEntryScreen(
     initialDate: LocalDate? = null
 ) {
     val initialStoreName = remember { expenseToEdit?.storeName ?: groupToEdit?.firstOrNull()?.storeName ?: "" }
+    val initialLocation = remember { expenseToEdit?.location ?: groupToEdit?.firstOrNull()?.location ?: "" }
     val initialTotalAmount = remember { expenseToEdit?.amount?.toString() ?: "" }
     val initialMainCategory = remember { expenseToEdit?.category ?: "" }
     val initialMainSubcategory = remember { expenseToEdit?.subcategory ?: "" }
@@ -90,16 +93,39 @@ fun ExpenseEntryScreen(
                 quantity = e.quantity?.toString() ?: "",
                 unit = e.unit ?: "",
                 notes = e.notes ?: "",
-                paymentMode = e.paymentMode,
-                paidVia = e.paidVia
+                baseAmount = e.baseAmount?.toString() ?: e.amount.toString(),
+                gstPercentage = e.gstPercentage?.toString() ?: "",
+                gstAmount = e.gstAmount?.toString() ?: ""
             )
         } ?: listOf(SubTransaction(1))
     }
 
     var storeName by remember { mutableStateOf(initialStoreName) }
+    var location by remember { mutableStateOf(initialLocation) }
     val initialDescription = remember { expenseToEdit?.itemDescription ?: groupToEdit?.firstOrNull()?.itemDescription ?: "" }
     var description by remember { mutableStateOf(initialDescription) }
     var totalAmount by remember { mutableStateOf(initialTotalAmount) }
+    
+    val initialBaseAmount = remember { expenseToEdit?.baseAmount?.toString() ?: expenseToEdit?.amount?.toString() ?: "" }
+    val initialGstPercentage = remember { expenseToEdit?.gstPercentage?.toString() ?: "" }
+    val initialGstAmount = remember { expenseToEdit?.gstAmount?.toString() ?: "" }
+    var baseAmount by remember { mutableStateOf(initialBaseAmount) }
+    var gstPercentage by remember { mutableStateOf(initialGstPercentage) }
+    var gstAmount by remember { mutableStateOf(initialGstAmount) }
+    
+    val initialGlobalGstPercent = remember {
+        val firstGst = groupToEdit?.firstOrNull()?.gstPercentage
+        if (firstGst != null && groupToEdit.all { it.gstPercentage == firstGst }) {
+            firstGst.toString()
+        } else ""
+    }
+    val initialTotalGstPaid = remember {
+        val totalGst = groupToEdit?.sumOf { it.gstAmount ?: 0.0 } ?: 0.0
+        if (totalGst > 0.0) String.format("%.2f", totalGst).replace(".00", "") else ""
+    }
+    var globalGstPercent by remember { mutableStateOf(initialGlobalGstPercent) }
+    var totalGstPaid by remember { mutableStateOf(initialTotalGstPaid) }
+
     var quantity by remember { mutableStateOf(initialQuantity) }
     var unit by remember { mutableStateOf(initialUnit) }
     val initialNotes = remember { expenseToEdit?.notes ?: groupToEdit?.firstOrNull()?.notes ?: "" }
@@ -146,6 +172,8 @@ fun ExpenseEntryScreen(
     var calcPrevious by remember { mutableStateOf("") }
     var calcOperation by remember { mutableStateOf<String?>(null) }
     var calcNewNumber by remember { mutableStateOf(true) }
+    var calcTargetField by remember { mutableStateOf<String?>(null) }
+    var calcTargetSplitIndex by remember { mutableStateOf<Int?>(null) }
 
     // Store suggestions state
     var showStoreSuggestions by remember { mutableStateOf(false) }
@@ -159,8 +187,12 @@ fun ExpenseEntryScreen(
 
     fun hasChanges(): Boolean {
         return storeName != initialStoreName ||
+                location != initialLocation ||
                 description != initialDescription ||
                 totalAmount != initialTotalAmount ||
+                baseAmount != initialBaseAmount ||
+                gstPercentage != initialGstPercentage ||
+                gstAmount != initialGstAmount ||
                 quantity != initialQuantity ||
                 unit != initialUnit ||
                 notes != initialNotes ||
@@ -215,24 +247,222 @@ fun ExpenseEntryScreen(
         calcNewNumber = true
     }
 
+    fun applyGlobalGstPercent(splits: List<SubTransaction>, percentStr: String): List<SubTransaction> {
+        val percentVal = percentStr.toDoubleOrNull() ?: 0.0
+        return splits.map { subTx ->
+            val baseVal = subTx.baseAmount.toDoubleOrNull() ?: 0.0
+            val gstAmtVal = baseVal * (percentVal / 100.0)
+            val totalVal = baseVal + gstAmtVal
+            subTx.copy(
+                gstPercentage = percentStr,
+                gstAmount = if (baseVal > 0.0 && percentVal > 0.0) String.format("%.2f", gstAmtVal).replace(".00", "") else "",
+                amount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+            )
+        }
+    }
+
+    fun applyTotalGstPaid(splits: List<SubTransaction>, totalGst: Double): List<SubTransaction> {
+        val totalBase = splits.sumOf { it.baseAmount.toDoubleOrNull() ?: 0.0 }
+        if (totalBase <= 0.0) return splits
+        val percentVal = (totalGst / totalBase) * 100.0
+        val percentStr = String.format("%.2f", percentVal).replace(".00", "")
+        globalGstPercent = percentStr
+        
+        return splits.map { subTx ->
+            val baseVal = subTx.baseAmount.toDoubleOrNull() ?: 0.0
+            val gstAmtVal = baseVal * (percentVal / 100.0)
+            val totalVal = baseVal + gstAmtVal
+            subTx.copy(
+                gstPercentage = percentStr,
+                gstAmount = if (baseVal > 0.0) String.format("%.2f", gstAmtVal).replace(".00", "") else "",
+                amount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+            )
+        }
+    }
+
     fun onCalcInsert() {
-        if (isSplit && expandedSplitId != null) {
-            // Insert into the AMT field of the expanded split transaction
-            val index = subTransactions.indexOfFirst { it.id == expandedSplitId }
-            if (index >= 0) {
-                val subTx = subTransactions[index]
-                subTransactions = subTransactions.toMutableList().apply {
-                    this[index] = subTx.copy(amount = calcDisplay)
+        val target = calcTargetField
+        val valueStr = calcDisplay
+        
+        if (target != null) {
+            when (target) {
+                "MAIN_BASE" -> {
+                    baseAmount = valueStr
+                    val baseVal = valueStr.toDoubleOrNull() ?: 0.0
+                    val percentVal = gstPercentage.toDoubleOrNull() ?: 0.0
+                    val gstAmtVal = gstAmount.toDoubleOrNull() ?: 0.0
+                    if (gstPercentage.isNotEmpty()) {
+                        val calculatedGst = baseVal * (percentVal / 100.0)
+                        gstAmount = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                        val totalVal = baseVal + calculatedGst
+                        totalAmount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                    } else if (gstAmount.isNotEmpty()) {
+                        val totalVal = baseVal + gstAmtVal
+                        totalAmount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                        if (baseVal > 0.0) {
+                            gstPercentage = String.format("%.2f", (gstAmtVal / baseVal) * 100.0).replace(".00", "")
+                        }
+                    } else {
+                        totalAmount = valueStr
+                    }
+                }
+                "MAIN_GST_PCT" -> {
+                    gstPercentage = valueStr
+                    val baseVal = baseAmount.toDoubleOrNull() ?: 0.0
+                    val percentVal = valueStr.toDoubleOrNull() ?: 0.0
+                    if (valueStr.isNotEmpty()) {
+                        val calculatedGst = baseVal * (percentVal / 100.0)
+                        gstAmount = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                        val totalVal = baseVal + calculatedGst
+                        totalAmount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                    } else {
+                        gstAmount = ""
+                        totalAmount = baseAmount
+                    }
+                }
+                "MAIN_GST_AMT" -> {
+                    gstAmount = valueStr
+                    val baseVal = baseAmount.toDoubleOrNull() ?: 0.0
+                    val gstAmtVal = valueStr.toDoubleOrNull() ?: 0.0
+                    if (valueStr.isNotEmpty()) {
+                        val totalVal = baseVal + gstAmtVal
+                        totalAmount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                        if (baseVal > 0.0) {
+                            gstPercentage = String.format("%.2f", (gstAmtVal / baseVal) * 100.0).replace(".00", "")
+                        }
+                    } else {
+                        gstPercentage = ""
+                        totalAmount = baseAmount
+                    }
+                }
+                "SPLIT_BASE", "SPLIT_GST_PCT", "SPLIT_GST_AMT" -> {
+                    val index = calcTargetSplitIndex
+                    if (index != null && index >= 0 && index < subTransactions.size) {
+                        val subTx = subTransactions[index]
+                        
+                        var newBase = subTx.baseAmount
+                        var newGstPct = subTx.gstPercentage
+                        var newGstAmt = subTx.gstAmount
+                        var newTotal = subTx.amount
+                        
+                        when (target) {
+                            "SPLIT_BASE" -> {
+                                newBase = valueStr
+                                val baseVal = valueStr.toDoubleOrNull() ?: 0.0
+                                val percentVal = subTx.gstPercentage.toDoubleOrNull() ?: 0.0
+                                val gstAmtVal = subTx.gstAmount.toDoubleOrNull() ?: 0.0
+                                if (subTx.gstPercentage.isNotEmpty()) {
+                                    val calculatedGst = baseVal * (percentVal / 100.0)
+                                    newGstAmt = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                                    val totalVal = baseVal + calculatedGst
+                                    newTotal = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                                } else if (subTx.gstAmount.isNotEmpty()) {
+                                    val totalVal = baseVal + gstAmtVal
+                                    newTotal = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                                    newGstPct = if (baseVal > 0.0) String.format("%.2f", (gstAmtVal / baseVal) * 100.0).replace(".00", "") else ""
+                                } else {
+                                    newTotal = valueStr
+                                }
+                            }
+                            "SPLIT_GST_PCT" -> {
+                                newGstPct = valueStr
+                                val baseVal = subTx.baseAmount.toDoubleOrNull() ?: 0.0
+                                val percentVal = valueStr.toDoubleOrNull() ?: 0.0
+                                if (valueStr.isNotEmpty()) {
+                                    val calculatedGst = baseVal * (percentVal / 100.0)
+                                    newGstAmt = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                                    val totalVal = baseVal + calculatedGst
+                                    newTotal = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                                } else {
+                                    newGstAmt = ""
+                                    newTotal = subTx.baseAmount
+                                }
+                                globalGstPercent = ""
+                                totalGstPaid = ""
+                            }
+                            "SPLIT_GST_AMT" -> {
+                                newGstAmt = valueStr
+                                val baseVal = subTx.baseAmount.toDoubleOrNull() ?: 0.0
+                                val gstAmtVal = valueStr.toDoubleOrNull() ?: 0.0
+                                if (valueStr.isNotEmpty()) {
+                                    val totalVal = baseVal + gstAmtVal
+                                    newTotal = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                                    newGstPct = if (baseVal > 0.0) String.format("%.2f", (gstAmtVal / baseVal) * 100.0).replace(".00", "") else ""
+                                } else {
+                                    newGstPct = ""
+                                    newTotal = subTx.baseAmount
+                                }
+                                globalGstPercent = ""
+                                totalGstPaid = ""
+                            }
+                        }
+                        
+                        val updatedSplits = subTransactions.toMutableList().apply {
+                            this[index] = subTx.copy(
+                                baseAmount = newBase,
+                                gstPercentage = newGstPct,
+                                gstAmount = newGstAmt,
+                                amount = newTotal
+                            )
+                        }
+                        
+                        if (globalGstPercent.isNotEmpty()) {
+                            subTransactions = applyGlobalGstPercent(updatedSplits, globalGstPercent)
+                        } else if (totalGstPaid.isNotEmpty()) {
+                            val totalGstVal = totalGstPaid.toDoubleOrNull() ?: 0.0
+                            subTransactions = applyTotalGstPaid(updatedSplits, totalGstVal)
+                        } else {
+                            subTransactions = updatedSplits
+                        }
+                    }
                 }
             }
         } else {
-            // Insert into TOTAL field
-            totalAmount = calcDisplay
+            if (isSplit && expandedSplitId != null) {
+                val index = subTransactions.indexOfFirst { it.id == expandedSplitId }
+                if (index >= 0) {
+                    val subTx = subTransactions[index]
+                    val baseVal = calcDisplay.toDoubleOrNull() ?: 0.0
+                    val percentVal = subTx.gstPercentage.toDoubleOrNull() ?: 0.0
+                    val gstAmtVal = subTx.gstAmount.toDoubleOrNull() ?: 0.0
+                    val calculatedGst = baseVal * (percentVal / 100.0)
+                    val newGstAmtStr = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                    val totalVal = baseVal + calculatedGst
+                    val newTotalAmtStr = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                    
+                    val updatedSplits = subTransactions.toMutableList().apply {
+                        this[index] = subTx.copy(
+                            baseAmount = calcDisplay,
+                            gstPercentage = subTx.gstPercentage,
+                            gstAmount = newGstAmtStr,
+                            amount = newTotalAmtStr
+                        )
+                    }
+                    if (globalGstPercent.isNotEmpty()) {
+                        subTransactions = applyGlobalGstPercent(updatedSplits, globalGstPercent)
+                    } else if (totalGstPaid.isNotEmpty()) {
+                        val totalGstVal = totalGstPaid.toDoubleOrNull() ?: 0.0
+                        subTransactions = applyTotalGstPaid(updatedSplits, totalGstVal)
+                    } else {
+                        subTransactions = updatedSplits
+                    }
+                }
+            } else {
+                baseAmount = calcDisplay
+                val baseVal = calcDisplay.toDoubleOrNull() ?: 0.0
+                val percentVal = gstPercentage.toDoubleOrNull() ?: 0.0
+                val calculatedGst = baseVal * (percentVal / 100.0)
+                gstAmount = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                val totalVal = baseVal + calculatedGst
+                totalAmount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+            }
         }
         showCalculator = false
+        calcTargetField = null
+        calcTargetSplitIndex = null
     }
 
-    fun performSave() {
+    fun performSave(isDraft: Boolean = false) {
         // Update store history with the current store name if it's not empty
         if (storeName.isNotBlank()) {
             onUpdateStoreHistory(storeName)
@@ -242,11 +472,13 @@ fun ExpenseEntryScreen(
         val sharedGroupId = expenseToEdit?.groupId ?: groupToEdit?.firstOrNull()?.groupId ?: java.util.UUID.randomUUID().toString()
         val listToSave = if (isSplit && subTransactions.size > 1) {
             subTransactions.map { subTx ->
+                val finalAmount = subTx.amount.toDoubleOrNull() ?: 0.0
                 Expense(
                     groupId = sharedGroupId,
                     date = expenseDate,
                     storeName = storeName,
-                    amount = subTx.amount.toDoubleOrNull() ?: 0.0,
+                    location = location,
+                    amount = finalAmount,
                     category = subTx.category.ifEmpty { mainCategory },
                     subcategory = subTx.subcategory.ifEmpty { mainSubcategory },
                     itemDescription = subTx.description,
@@ -254,18 +486,24 @@ fun ExpenseEntryScreen(
                     quantity = subTx.quantity.toDoubleOrNull(),
                     unit = subTx.unit.ifEmpty { null },
                     notes = subTx.notes.ifEmpty { notes },
-                    paymentMode = subTx.paymentMode.ifEmpty { mainPaymentMode },
-                    paidVia = subTx.paidVia.ifEmpty { mainPaidVia }
+                    paymentMode = mainPaymentMode,
+                    paidVia = mainPaidVia,
+                    isDraft = isDraft,
+                    baseAmount = subTx.baseAmount.toDoubleOrNull() ?: finalAmount,
+                    gstPercentage = subTx.gstPercentage.toDoubleOrNull(),
+                    gstAmount = subTx.gstAmount.toDoubleOrNull()
                 )
             }
         } else if (isSplit && subTransactions.size == 1) {
             val subTx = subTransactions[0]
+            val finalAmount = subTx.amount.toDoubleOrNull() ?: 0.0
             listOf(
                 Expense(
                     groupId = sharedGroupId,
                     date = expenseDate,
                     storeName = storeName,
-                    amount = subTx.amount.toDoubleOrNull() ?: 0.0,
+                    location = location,
+                    amount = finalAmount,
                     category = subTx.category.ifEmpty { mainCategory },
                     subcategory = subTx.subcategory.ifEmpty { mainSubcategory },
                     itemDescription = subTx.description,
@@ -273,17 +511,23 @@ fun ExpenseEntryScreen(
                     quantity = subTx.quantity.toDoubleOrNull(),
                     unit = subTx.unit.ifEmpty { null },
                     notes = subTx.notes.ifEmpty { notes },
-                    paymentMode = subTx.paymentMode.ifEmpty { mainPaymentMode },
-                    paidVia = subTx.paidVia.ifEmpty { mainPaidVia }
+                    paymentMode = mainPaymentMode,
+                    paidVia = mainPaidVia,
+                    isDraft = isDraft,
+                    baseAmount = subTx.baseAmount.toDoubleOrNull() ?: finalAmount,
+                    gstPercentage = subTx.gstPercentage.toDoubleOrNull(),
+                    gstAmount = subTx.gstAmount.toDoubleOrNull()
                 )
             )
         } else {
+            val finalAmount = totalAmount.toDoubleOrNull() ?: 0.0
             listOf(
                 Expense(
                     groupId = sharedGroupId,
                     date = expenseDate,
                     storeName = storeName,
-                    amount = totalAmount.toDoubleOrNull() ?: 0.0,
+                    location = location,
+                    amount = finalAmount,
                     category = mainCategory,
                     subcategory = mainSubcategory,
                     itemDescription = description,
@@ -292,7 +536,11 @@ fun ExpenseEntryScreen(
                     unit = unit.ifEmpty { null },
                     notes = notes,
                     paymentMode = mainPaymentMode,
-                    paidVia = mainPaidVia
+                    paidVia = mainPaidVia,
+                    isDraft = isDraft,
+                    baseAmount = baseAmount.toDoubleOrNull() ?: finalAmount,
+                    gstPercentage = gstPercentage.toDoubleOrNull(),
+                    gstAmount = gstAmount.toDoubleOrNull()
                 )
             )
         }
@@ -306,7 +554,7 @@ fun ExpenseEntryScreen(
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("UNSAVED CHANGES", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
                     Spacer(modifier = Modifier.height(12.dp))
-                    Text("Do you want to update before leaving?")
+                    Text("Do you want to save before leaving?")
                     Spacer(modifier = Modifier.height(20.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -320,16 +568,26 @@ fun ExpenseEntryScreen(
                             modifier = Modifier.weight(1f),
                             containerColor = White
                         ) {
-                            Text("NO", color = Black, fontWeight = FontWeight.Bold)
+                            Text("DISCARD", color = Black, fontWeight = FontWeight.Bold)
                         }
                         BrutalistButton(
                             onClick = {
                                 showExitConfirmation = false
-                                performSave()
+                                performSave(isDraft = true)
+                            },
+                            modifier = Modifier.weight(1f),
+                            containerColor = White
+                        ) {
+                            Text("SAVE DRAFT", color = Black, fontWeight = FontWeight.Bold)
+                        }
+                        BrutalistButton(
+                            onClick = {
+                                showExitConfirmation = false
+                                performSave(isDraft = false)
                             },
                             modifier = Modifier.weight(1f)
                         ) {
-                            Text("YES", fontWeight = FontWeight.Bold)
+                            Text("SAVE", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -528,7 +786,6 @@ fun ExpenseEntryScreen(
                             onClick = {
                                 showAddPaymentModeDialog = false
                                 newPaymentModeName = ""
-                                editingSplitIndex = null
                             },
                             modifier = Modifier.weight(1f),
                             containerColor = White
@@ -539,16 +796,9 @@ fun ExpenseEntryScreen(
                             onClick = {
                                 if (newPaymentModeName.isNotBlank()) {
                                     onAddPaymentMode(newPaymentModeName)
-                                    if (editingSplitIndex != null) {
-                                        subTransactions = subTransactions.toMutableList().apply {
-                                            this[editingSplitIndex!!] = this[editingSplitIndex!!].copy(paymentMode = newPaymentModeName)
-                                        }
-                                    } else {
-                                        mainPaymentMode = newPaymentModeName
-                                    }
+                                    mainPaymentMode = newPaymentModeName
                                     showAddPaymentModeDialog = false
                                     newPaymentModeName = ""
-                                    editingSplitIndex = null
                                 }
                             },
                             modifier = Modifier.weight(1f)
@@ -582,7 +832,6 @@ fun ExpenseEntryScreen(
                             onClick = {
                                 showAddPaidViaDialog = false
                                 newPaidViaName = ""
-                                editingSplitIndex = null
                             },
                             modifier = Modifier.weight(1f),
                             containerColor = White
@@ -593,16 +842,9 @@ fun ExpenseEntryScreen(
                             onClick = {
                                 if (newPaidViaName.isNotBlank()) {
                                     onAddPaidVia(newPaidViaName)
-                                    if (editingSplitIndex != null) {
-                                        subTransactions = subTransactions.toMutableList().apply {
-                                            this[editingSplitIndex!!] = this[editingSplitIndex!!].copy(paidVia = newPaidViaName)
-                                        }
-                                    } else {
-                                        mainPaidVia = newPaidViaName
-                                    }
+                                    mainPaidVia = newPaidViaName
                                     showAddPaidViaDialog = false
                                     newPaidViaName = ""
-                                    editingSplitIndex = null
                                 }
                             },
                             modifier = Modifier.weight(1f)
@@ -662,139 +904,154 @@ fun ExpenseEntryScreen(
             )
         }
 
-        // ── Calculator UI (inline, right-aligned) ────────────────────────────
+        // ── Calculator UI (Modal Dialog pop-up) ────────────────────────────
         if (showCalculator) {
-            BrutalistCard(
-                modifier = Modifier
-                    .widthIn(max = 320.dp)
-                    .wrapContentWidth(align = Alignment.End)
-                    .padding(bottom = 10.dp)
-                    .align(Alignment.End)
-            ) {
-                Column(modifier = Modifier.padding(8.dp)) {
-                    // Display
-                    Text(
-                        text = calcDisplay,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(2.dp, Black)
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        maxLines = 1
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    // Calculator buttons row 1: 7 8 9 /
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("7", "8", "9", "/").forEach { btn ->
-                            BrutalistButton(
-                                onClick = {
-                                    if (btn in listOf("+", "-", "*", "/")) onCalcOperation(btn) else onCalcDigit(btn)
-                                },
-                                modifier = Modifier.weight(1f),
-                                containerColor = if (btn in listOf("+", "-", "*", "/")) Black else White
-                            ) {
-                                Text(
-                                    btn,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = if (btn in listOf("+", "-", "*", "/")) White else Black
-                                )
+            Dialog(onDismissRequest = { 
+                showCalculator = false 
+                calcTargetField = null
+                calcTargetSplitIndex = null
+            }) {
+                BrutalistCard(
+                    modifier = Modifier
+                        .width(320.dp)
+                        .padding(16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(8.dp)) {
+                        // Display
+                        Text(
+                            text = calcDisplay,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(2.dp, Black)
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            maxLines = 1
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        // Calculator buttons row 1: 7 8 9 /
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("7", "8", "9", "/").forEach { btn ->
+                                BrutalistButton(
+                                    onClick = {
+                                        if (btn in listOf("+", "-", "*", "/")) onCalcOperation(btn) else onCalcDigit(btn)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    containerColor = if (btn in listOf("+", "-", "*", "/")) Black else White,
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text(
+                                        btn,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = if (btn in listOf("+", "-", "*", "/")) White else Black
+                                    )
+                                }
                             }
                         }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    // Calculator buttons row 2: 4 5 6 *
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("4", "5", "6", "*").forEach { btn ->
-                            BrutalistButton(
-                                onClick = {
-                                    if (btn in listOf("+", "-", "*", "/")) onCalcOperation(btn) else onCalcDigit(btn)
-                                },
-                                modifier = Modifier.weight(1f),
-                                containerColor = if (btn in listOf("+", "-", "*", "/")) Black else White
-                            ) {
-                                Text(
-                                    btn,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = if (btn in listOf("+", "-", "*", "/")) White else Black
-                                )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // Calculator buttons row 2: 4 5 6 *
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("4", "5", "6", "*").forEach { btn ->
+                                BrutalistButton(
+                                    onClick = {
+                                        if (btn in listOf("+", "-", "*", "/")) onCalcOperation(btn) else onCalcDigit(btn)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    containerColor = if (btn in listOf("+", "-", "*", "/")) Black else White,
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text(
+                                        btn,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = if (btn in listOf("+", "-", "*", "/")) White else Black
+                                    )
+                                }
                             }
                         }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    // Calculator buttons row 3: 1 2 3 -
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                        listOf("1", "2", "3", "-").forEach { btn ->
-                            BrutalistButton(
-                                onClick = {
-                                    if (btn in listOf("+", "-", "*", "/")) onCalcOperation(btn) else onCalcDigit(btn)
-                                },
-                                modifier = Modifier.weight(1f),
-                                containerColor = if (btn in listOf("+", "-", "*", "/")) Black else White
-                            ) {
-                                Text(
-                                    btn,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp,
-                                    color = if (btn in listOf("+", "-", "*", "/")) White else Black
-                                )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // Calculator buttons row 3: 1 2 3 -
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                            listOf("1", "2", "3", "-").forEach { btn ->
+                                BrutalistButton(
+                                    onClick = {
+                                        if (btn in listOf("+", "-", "*", "/")) onCalcOperation(btn) else onCalcDigit(btn)
+                                    },
+                                    modifier = Modifier.weight(1f),
+                                    containerColor = if (btn in listOf("+", "-", "*", "/")) Black else White,
+                                    contentPadding = PaddingValues(0.dp)
+                                ) {
+                                    Text(
+                                        btn,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 16.sp,
+                                        color = if (btn in listOf("+", "-", "*", "/")) White else Black
+                                    )
+                                }
                             }
                         }
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    // Calculator buttons row 4: C 0 . + = INS
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        BrutalistButton(
-                            onClick = { onCalcClear() },
-                            modifier = Modifier.weight(1f).height(40.dp),
-                            containerColor = MaterialTheme.colorScheme.error
+                        Spacer(modifier = Modifier.height(4.dp))
+                        // Calculator buttons row 4: C 0 . + = INS
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("C", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = White)
-                        }
-                        BrutalistButton(
-                            onClick = { onCalcDigit("0") },
-                            modifier = Modifier.weight(1f).height(40.dp)
-                        ) {
-                            Text("0", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
-                        BrutalistButton(
-                            onClick = { onCalcDigit(".") },
-                            modifier = Modifier.weight(1f).height(40.dp)
-                        ) {
-                            Text(".", fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                        }
-                        BrutalistButton(
-                            onClick = { onCalcOperation("+") },
-                            modifier = Modifier.weight(1f).height(40.dp),
-                            containerColor = Black
-                        ) {
-                            Text("+", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = White)
-                        }
-                        BrutalistButton(
-                            onClick = { onCalcEqual() },
-                            modifier = Modifier.weight(1f).height(40.dp),
-                            containerColor = Black
-                        ) {
-                            Text("=", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = White)
-                        }
-                        BrutalistButton(
-                            onClick = { onCalcInsert() },
-                            modifier = Modifier.weight(1f).height(40.dp),
-                            containerColor = MaterialTheme.colorScheme.primary
-                        ) {
-                            Text(
-                                "INS",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                color = White,
-                                modifier = Modifier.wrapContentSize(Alignment.Center)
-                            )
+                            BrutalistButton(
+                                onClick = { onCalcClear() },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("C", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = White)
+                            }
+                            BrutalistButton(
+                                onClick = { onCalcDigit("0") },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                containerColor = White,
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("0", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Black)
+                            }
+                            BrutalistButton(
+                                onClick = { onCalcDigit(".") },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                containerColor = White,
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(".", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Black)
+                            }
+                            BrutalistButton(
+                                onClick = { onCalcOperation("+") },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                containerColor = Black,
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("+", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = White)
+                            }
+                            BrutalistButton(
+                                onClick = { onCalcEqual() },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                containerColor = Black,
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text("=", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = White)
+                            }
+                            BrutalistButton(
+                                onClick = { onCalcInsert() },
+                                modifier = Modifier.weight(1f).height(40.dp),
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentPadding = PaddingValues(0.dp)
+                            ) {
+                                Text(
+                                    "INS",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.wrapContentSize(Alignment.Center)
+                                )
+                            }
                         }
                     }
                 }
@@ -813,17 +1070,13 @@ fun ExpenseEntryScreen(
             )
         }
 
-        // ── Date + Store + Item Row ───────────────────────────────────────────────
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Box(
+        // ── Mobile portrait: vertical layout ─────────────────────────────────────
+        // Date field
+        Box(
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxWidth()
                     .clickable { showDatePicker = true }
+                    .padding(bottom = 10.dp)
             ) {
                 BrutalistTextField(
                     value = selectedDate.format(dateFormatter),
@@ -834,17 +1087,25 @@ fun ExpenseEntryScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
-            Box(modifier = Modifier.weight(1f)) {
+
+            // Store field with suggestions
+            Box(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)) {
                 BrutalistTextField(
                     value = storeName,
-                    onValueChange = { 
+                    onValueChange = {
                         storeName = it
                         showStoreSuggestions = it.isNotBlank()
                     },
                     label = "STORE",
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { focusState ->
+                            if (!focusState.isFocused) {
+                                showStoreSuggestions = false
+                            }
+                        }
                 )
-                
+
                 // Store suggestions dropdown
                 if (showStoreSuggestions && filteredStoreSuggestions.isNotEmpty()) {
                     BrutalistCard(
@@ -871,56 +1132,191 @@ fun ExpenseEntryScreen(
                     }
                 }
             }
+
+            // Location field
+            BrutalistTextField(
+                value = location,
+                onValueChange = {
+                    location = it
+                    showStoreSuggestions = false
+                },
+                label = "LOCATION",
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+            )
+
+            // Item name (non-split mode)
             if (!isSplit) {
                 BrutalistTextField(
                     value = description,
                     onValueChange = { description = it },
                     label = "ITEM NAME",
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
                 )
-            }
-        }
-
-        // ── Amount + Quantity + Unit inline (non-split mode) ─────────────
-        if (!isSplit) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
+                // Base Amount field (non-split mode)
+                BrutalistTextField(
+                    value = baseAmount,
+                    onValueChange = { newValue ->
+                        baseAmount = newValue
+                        val baseVal = newValue.toDoubleOrNull() ?: 0.0
+                        val percentVal = gstPercentage.toDoubleOrNull() ?: 0.0
+                        val gstAmtVal = gstAmount.toDoubleOrNull() ?: 0.0
+                        
+                        if (gstPercentage.isNotEmpty()) {
+                            val calculatedGst = baseVal * (percentVal / 100.0)
+                            gstAmount = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                            val totalVal = baseVal + calculatedGst
+                            totalAmount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                        } else if (gstAmount.isNotEmpty()) {
+                            val totalVal = baseVal + gstAmtVal
+                            totalAmount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                            if (baseVal > 0.0) {
+                                val calculatedPercent = (gstAmtVal / baseVal) * 100.0
+                                gstPercentage = String.format("%.2f", calculatedPercent).replace(".00", "")
+                            }
+                        } else {
+                            totalAmount = newValue
+                        }
+                    },
+                    label = "Base AMT (₹)",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    trailingIcon = {
+                        Text(
+                            "CALC",
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 11.sp,
+                            modifier = Modifier
+                                .border(1.5.dp, Black)
+                                .clickable {
+                                    calcDisplay = if (baseAmount.isNotEmpty()) baseAmount else "0"
+                                    calcTargetField = "MAIN_BASE"
+                                    calcTargetSplitIndex = null
+                                    showCalculator = true
+                                }
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                        )
+                    }
+                )
+                
+                // GST % and GST Amount (non-split mode)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    BrutalistTextField(
+                        value = gstPercentage,
+                        onValueChange = { newValue ->
+                            gstPercentage = newValue
+                            val baseVal = baseAmount.toDoubleOrNull() ?: 0.0
+                            val percentVal = newValue.toDoubleOrNull() ?: 0.0
+                            if (newValue.isNotEmpty()) {
+                                val calculatedGst = baseVal * (percentVal / 100.0)
+                                gstAmount = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                                val totalVal = baseVal + calculatedGst
+                                totalAmount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                            } else {
+                                gstAmount = ""
+                                totalAmount = baseAmount
+                            }
+                        },
+                        label = "GST %",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        trailingIcon = {
+                            Text(
+                                "CALC",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 11.sp,
+                                modifier = Modifier
+                                    .border(1.5.dp, Black)
+                                    .clickable {
+                                        calcDisplay = if (gstPercentage.isNotEmpty()) gstPercentage else "0"
+                                        calcTargetField = "MAIN_GST_PCT"
+                                        calcTargetSplitIndex = null
+                                        showCalculator = true
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    )
+                    BrutalistTextField(
+                        value = gstAmount,
+                        onValueChange = { newValue ->
+                            gstAmount = newValue
+                            val baseVal = baseAmount.toDoubleOrNull() ?: 0.0
+                            val gstAmtVal = newValue.toDoubleOrNull() ?: 0.0
+                            if (newValue.isNotEmpty()) {
+                                val totalVal = baseVal + gstAmtVal
+                                totalAmount = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                                if (baseVal > 0.0) {
+                                    val calculatedPercent = (gstAmtVal / baseVal) * 100.0
+                                    gstPercentage = String.format("%.2f", calculatedPercent).replace(".00", "")
+                                }
+                            } else {
+                                gstPercentage = ""
+                                totalAmount = baseAmount
+                            }
+                        },
+                        label = "GST (₹)",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f),
+                        trailingIcon = {
+                            Text(
+                                "CALC",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 11.sp,
+                                modifier = Modifier
+                                    .border(1.5.dp, Black)
+                                    .clickable {
+                                        calcDisplay = if (gstAmount.isNotEmpty()) gstAmount else "0"
+                                        calcTargetField = "MAIN_GST_AMT"
+                                        calcTargetSplitIndex = null
+                                        showCalculator = true
+                                    }
+                                    .padding(horizontal = 6.dp, vertical = 3.dp)
+                            )
+                        }
+                    )
+                }
+                
+                // Total Amount field (non-split mode)
                 BrutalistTextField(
                     value = totalAmount,
-                    onValueChange = { totalAmount = it },
-                    label = "TOTAL (₹)",
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1.3f)
+                    onValueChange = { /* Read-only */ },
+                    label = "TOTAL AMOUNT (₹)",
+                    readOnly = true,
+                    enabled = false,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
                 )
-                BrutalistTextField(
-                    value = quantity,
-                    onValueChange = { quantity = it },
-                    label = "QTY",
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(0.7f)
-                )
-                BrutalistTextField(
-                    value = unit,
-                    onValueChange = { unit = it },
-                    label = "UNIT",
-                    modifier = Modifier.weight(0.8f)
-                )
+                // QTY & UNIT fields (non-split mode)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    BrutalistTextField(
+                        value = quantity,
+                        onValueChange = { quantity = it },
+                        label = "QTY",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(1f)
+                    )
+                    BrutalistTextField(
+                        value = unit,
+                        onValueChange = { unit = it },
+                        label = "UNIT",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
-        }
 
-        // ── Category + Subcategory + Labels inline (non-split mode) ───────────
+        // ── Category + Subcategory + Labels (non-split mode) ─────────────────
         if (!isSplit) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                BrutalistDropdown(
+            // Mobile: vertical stack
+            BrutalistDropdown(
                     label = "CATEGORY",
                     options = categories + "+ Add New",
                     selectedOption = mainCategory,
@@ -932,7 +1328,7 @@ fun ExpenseEntryScreen(
                             mainSubcategory = ""
                         }
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
                 )
                 BrutalistDropdown(
                     label = "SUBCATEGORY",
@@ -947,7 +1343,7 @@ fun ExpenseEntryScreen(
                             mainSubcategory = it
                         }
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
                 )
                 BrutalistMultiSelectDropdown(
                     label = "LABELS",
@@ -964,46 +1360,43 @@ fun ExpenseEntryScreen(
                             }
                         }
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                    showSearch = true
                 )
-            }
 
-            // ── Payment Mode + Paid Via inline (non-split mode) ─────────────
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                BrutalistDropdown(
-                    label = "PAYMENT MODE",
-                    options = paymentModes + "+ Add New",
-                    selectedOption = mainPaymentMode,
-                    onOptionSelected = {
-                        if (it == "+ Add New") {
-                            showAddPaymentModeDialog = true
-                        } else {
-                            mainPaymentMode = it
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-                BrutalistDropdown(
-                    label = "PAID VIA",
-                    options = paidVia + "+ Add New",
-                    selectedOption = mainPaidVia,
-                    onOptionSelected = {
-                        if (it == "+ Add New") {
-                            showAddPaidViaDialog = true
-                        } else {
-                            mainPaidVia = it
-                        }
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-            }
+        }
 
-            // ── Notes field ─────────────────────────────────────────────────────
+        // Mobile: vertical stack
+        BrutalistDropdown(
+                label = "PAYMENT MODE",
+                options = paymentModes + "+ Add New",
+                selectedOption = mainPaymentMode,
+                onOptionSelected = {
+                    if (it == "+ Add New") {
+                        showAddPaymentModeDialog = true
+                    } else {
+                        mainPaymentMode = it
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+            )
+            BrutalistDropdown(
+                label = "PAID VIA",
+                options = paidVia + "+ Add New",
+                selectedOption = mainPaidVia,
+                onOptionSelected = {
+                    if (it == "+ Add New") {
+                        showAddPaidViaDialog = true
+                    } else {
+                        mainPaidVia = it
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp)
+            )
+
+
+        // ── Notes field (non-split mode) ───────────────────────────────────────
+        if (!isSplit) {
             BrutalistTextField(
                 value = notes,
                 onValueChange = { notes = it },
@@ -1028,7 +1421,7 @@ fun ExpenseEntryScreen(
                 checked = isSplit,
                 onCheckedChange = {
                     isSplit = it
-                    if (it && subTransactions.size == 1 && subTransactions[0].category.isEmpty()) {
+                    if (it && subTransactions.size == 1) {
                         subTransactions = listOf(
                             subTransactions[0].copy(
                                 category = mainCategory,
@@ -1039,8 +1432,9 @@ fun ExpenseEntryScreen(
                                 quantity = quantity,
                                 unit = unit,
                                 notes = notes,
-                                paymentMode = mainPaymentMode,
-                                paidVia = mainPaidVia
+                                baseAmount = baseAmount,
+                                gstPercentage = gstPercentage,
+                                gstAmount = gstAmount
                             )
                         )
                     }
@@ -1060,6 +1454,91 @@ fun ExpenseEntryScreen(
 
         // ── Split items ───────────────────────────────────────────────────────
         if (isSplit) {
+            // Split GST settings card
+            BrutalistCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Text(
+                        "SPLIT GST SETTINGS",
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 14.sp,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        BrutalistTextField(
+                            value = globalGstPercent,
+                            onValueChange = { newValue ->
+                                globalGstPercent = newValue
+                                totalGstPaid = ""
+                                subTransactions = applyGlobalGstPercent(subTransactions, newValue)
+                            },
+                            label = "Global GST %",
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                        BrutalistTextField(
+                            value = totalGstPaid,
+                            onValueChange = { newValue ->
+                                totalGstPaid = newValue
+                                val totalGst = newValue.toDoubleOrNull() ?: 0.0
+                                if (newValue.isNotEmpty()) {
+                                    subTransactions = applyTotalGstPaid(subTransactions, totalGst)
+                                } else {
+                                    globalGstPercent = ""
+                                    subTransactions = subTransactions.map { subTx ->
+                                        subTx.copy(
+                                            gstPercentage = "",
+                                            gstAmount = "",
+                                            amount = subTx.baseAmount
+                                        )
+                                    }
+                                }
+                            },
+                            label = "Total GST (₹)",
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
+            }
+
+            // Split Totals summary card
+            val totalBaseAmt = subTransactions.sumOf { it.baseAmount.toDoubleOrNull() ?: 0.0 }
+            val totalGstAmt = subTransactions.sumOf { it.gstAmount.toDoubleOrNull() ?: 0.0 }
+            val totalCalculatedAmt = subTransactions.sumOf { it.amount.toDoubleOrNull() ?: 0.0 }
+            val totalBaseStr = String.format("%.2f", totalBaseAmt).replace(".00", "")
+            val totalGstStr = String.format("%.2f", totalGstAmt).replace(".00", "")
+            val totalCalcStr = String.format("%.2f", totalCalculatedAmt).replace(".00", "")
+
+            BrutalistCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text("Base: ₹$totalBaseStr", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text("GST: ₹$totalGstStr", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text(
+                        "SPLIT TOTAL: ₹$totalCalcStr",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
             subTransactions.forEachIndexed { index, subTx ->
                 val isExpanded = expandedSplitId == subTx.id
                 
@@ -1090,14 +1569,9 @@ fun ExpenseEntryScreen(
                             }
                         }
 
-                        // Description + Amount + Qty + Unit inline
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            BrutalistTextField(
+                        // Description + Amount + Qty + Unit
+                        // Mobile: vertical stack
+                        BrutalistTextField(
                                 value = subTx.description,
                                 onValueChange = {
                                     subTransactions = subTransactions.toMutableList().apply {
@@ -1105,59 +1579,228 @@ fun ExpenseEntryScreen(
                                     }
                                 },
                                 label = "ITEM NAME",
-                                modifier = Modifier.weight(1.3f)
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                             )
+                            // Base AMT field
+                            BrutalistTextField(
+                                value = subTx.baseAmount,
+                                onValueChange = { newValue ->
+                                    val baseVal = newValue.toDoubleOrNull() ?: 0.0
+                                    val percentVal = subTx.gstPercentage.toDoubleOrNull() ?: 0.0
+                                    val gstAmtVal = subTx.gstAmount.toDoubleOrNull() ?: 0.0
+                                    
+                                    val newGstAmtStr: String
+                                    val newGstPercentStr: String
+                                    val newTotalAmtStr: String
+                                    
+                                    if (subTx.gstPercentage.isNotEmpty()) {
+                                        val calculatedGst = baseVal * (percentVal / 100.0)
+                                        newGstAmtStr = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                                        newGstPercentStr = subTx.gstPercentage
+                                        val totalVal = baseVal + calculatedGst
+                                        newTotalAmtStr = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                                    } else if (subTx.gstAmount.isNotEmpty()) {
+                                        val totalVal = baseVal + gstAmtVal
+                                        newTotalAmtStr = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                                        newGstPercentStr = if (baseVal > 0.0) String.format("%.2f", (gstAmtVal / baseVal) * 100.0).replace(".00", "") else ""
+                                        newGstAmtStr = subTx.gstAmount
+                                    } else {
+                                        newGstAmtStr = ""
+                                        newGstPercentStr = ""
+                                        newTotalAmtStr = newValue
+                                    }
+                                    
+                                    val updatedSplits = subTransactions.toMutableList().apply {
+                                        this[index] = subTx.copy(
+                                            baseAmount = newValue,
+                                            gstPercentage = newGstPercentStr,
+                                            gstAmount = newGstAmtStr,
+                                            amount = newTotalAmtStr
+                                        )
+                                    }
+                                    
+                                    if (globalGstPercent.isNotEmpty()) {
+                                        subTransactions = applyGlobalGstPercent(updatedSplits, globalGstPercent)
+                                    } else if (totalGstPaid.isNotEmpty()) {
+                                        val totalGstVal = totalGstPaid.toDoubleOrNull() ?: 0.0
+                                        subTransactions = applyTotalGstPaid(updatedSplits, totalGstVal)
+                                    } else {
+                                        subTransactions = updatedSplits
+                                    }
+                                },
+                                label = "Base AMT (₹)",
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                trailingIcon = {
+                                    Text(
+                                        "CALC",
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 11.sp,
+                                        modifier = Modifier
+                                            .border(1.5.dp, Black)
+                                            .clickable {
+                                                calcDisplay = if (subTx.baseAmount.isNotEmpty()) subTx.baseAmount else "0"
+                                                calcTargetField = "SPLIT_BASE"
+                                                calcTargetSplitIndex = index
+                                                showCalculator = true
+                                            }
+                                            .padding(horizontal = 6.dp, vertical = 3.dp)
+                                    )
+                                }
+                            )
+                            
+                            // GST % & GST row
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                BrutalistTextField(
+                                    value = subTx.gstPercentage,
+                                    onValueChange = { newValue ->
+                                        val baseVal = subTx.baseAmount.toDoubleOrNull() ?: 0.0
+                                        val percentVal = newValue.toDoubleOrNull() ?: 0.0
+                                        
+                                        val newGstAmtStr: String
+                                        val newTotalAmtStr: String
+                                        
+                                        if (newValue.isNotEmpty()) {
+                                            val calculatedGst = baseVal * (percentVal / 100.0)
+                                            newGstAmtStr = if (calculatedGst > 0.0) String.format("%.2f", calculatedGst).replace(".00", "") else ""
+                                            val totalVal = baseVal + calculatedGst
+                                            newTotalAmtStr = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                                        } else {
+                                            newGstAmtStr = ""
+                                            newTotalAmtStr = subTx.baseAmount
+                                        }
+                                        
+                                        // Clear global fields when override occurs
+                                        globalGstPercent = ""
+                                        totalGstPaid = ""
+                                        
+                                        subTransactions = subTransactions.toMutableList().apply {
+                                            this[index] = subTx.copy(
+                                                gstPercentage = newValue,
+                                                gstAmount = newGstAmtStr,
+                                                amount = newTotalAmtStr
+                                            )
+                                        }
+                                    },
+                                    label = "GST %",
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f),
+                                    trailingIcon = {
+                                        Text(
+                                            "CALC",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier
+                                                .border(1.5.dp, Black)
+                                                .clickable {
+                                                    calcDisplay = if (subTx.gstPercentage.isNotEmpty()) subTx.gstPercentage else "0"
+                                                    calcTargetField = "SPLIT_GST_PCT"
+                                                    calcTargetSplitIndex = index
+                                                    showCalculator = true
+                                                }
+                                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                )
+                                BrutalistTextField(
+                                    value = subTx.gstAmount,
+                                    onValueChange = { newValue ->
+                                        val baseVal = subTx.baseAmount.toDoubleOrNull() ?: 0.0
+                                        val gstAmtVal = newValue.toDoubleOrNull() ?: 0.0
+                                        
+                                        val newGstPercentStr: String
+                                        val newTotalAmtStr: String
+                                        
+                                        if (newValue.isNotEmpty()) {
+                                            val totalVal = baseVal + gstAmtVal
+                                            newTotalAmtStr = if (totalVal > 0.0) String.format("%.2f", totalVal).replace(".00", "") else ""
+                                            newGstPercentStr = if (baseVal > 0.0) String.format("%.2f", (gstAmtVal / baseVal) * 100.0).replace(".00", "") else ""
+                                        } else {
+                                            newGstPercentStr = ""
+                                            newTotalAmtStr = subTx.baseAmount
+                                        }
+                                        
+                                        // Clear global fields when override occurs
+                                        globalGstPercent = ""
+                                        totalGstPaid = ""
+                                        
+                                        subTransactions = subTransactions.toMutableList().apply {
+                                            this[index] = subTx.copy(
+                                                gstPercentage = newGstPercentStr,
+                                                gstAmount = newValue,
+                                                amount = newTotalAmtStr
+                                            )
+                                        }
+                                    },
+                                    label = "GST (₹)",
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f),
+                                    trailingIcon = {
+                                        Text(
+                                            "CALC",
+                                            fontWeight = FontWeight.ExtraBold,
+                                            fontSize = 11.sp,
+                                            modifier = Modifier
+                                                .border(1.5.dp, Black)
+                                                .clickable {
+                                                    calcDisplay = if (subTx.gstAmount.isNotEmpty()) subTx.gstAmount else "0"
+                                                    calcTargetField = "SPLIT_GST_AMT"
+                                                    calcTargetSplitIndex = index
+                                                    showCalculator = true
+                                                }
+                                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                                        )
+                                    }
+                                )
+                            }
+                            
+                            // Calculated Total Amount
                             BrutalistTextField(
                                 value = subTx.amount,
-                                onValueChange = {
-                                    subTransactions = subTransactions.toMutableList().apply {
-                                        this[index] = subTx.copy(amount = it)
-                                    }
-                                },
-                                label = "AMT (₹)",
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.weight(1f)
+                                onValueChange = { /* Read-only */ },
+                                label = "TOTAL AMOUNT (₹)",
+                                readOnly = true,
+                                enabled = false,
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                             )
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            BrutalistTextField(
-                                value = subTx.quantity,
-                                onValueChange = {
-                                    subTransactions = subTransactions.toMutableList().apply {
-                                        this[index] = subTx.copy(quantity = it)
-                                    }
-                                },
-                                label = "QTY",
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                modifier = Modifier.weight(1f)
-                            )
-                            BrutalistTextField(
-                                value = subTx.unit,
-                                onValueChange = {
-                                    subTransactions = subTransactions.toMutableList().apply {
-                                        this[index] = subTx.copy(unit = it)
-                                    }
-                                },
-                                label = "UNIT",
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                BrutalistTextField(
+                                    value = subTx.quantity,
+                                    onValueChange = {
+                                        subTransactions = subTransactions.toMutableList().apply {
+                                            this[index] = subTx.copy(quantity = it)
+                                        }
+                                    },
+                                    label = "QTY",
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                                BrutalistTextField(
+                                    value = subTx.unit,
+                                    onValueChange = {
+                                        subTransactions = subTransactions.toMutableList().apply {
+                                            this[index] = subTx.copy(unit = it)
+                                        }
+                                    },
+                                    label = "UNIT",
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
 
 
-                        // Category + Subcategory + Labels inline
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            BrutalistDropdown(
+
+                        // Mobile: vertical stack
+                        BrutalistDropdown(
                                 label = "CATEGORY",
                                 options = categories + "+ Add New",
                                 selectedOption = subTx.category,
@@ -1171,7 +1814,7 @@ fun ExpenseEntryScreen(
                                         }
                                     }
                                 },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                             )
                             BrutalistDropdown(
                                 label = "SUBCATEGORY",
@@ -1189,7 +1832,7 @@ fun ExpenseEntryScreen(
                                         }
                                     }
                                 },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
                             )
                             BrutalistMultiSelectDropdown(
                                 label = "LABELS",
@@ -1206,50 +1849,11 @@ fun ExpenseEntryScreen(
                                         }
                                     }
                                 },
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                                showSearch = true
                             )
-                        }
 
-                        // Payment Mode + Paid Via inline (split mode)
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(bottom = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            BrutalistDropdown(
-                                label = "PAYMENT MODE",
-                                options = paymentModes + "+ Add New",
-                                selectedOption = subTx.paymentMode,
-                                onOptionSelected = {
-                                    if (it == "+ Add New") {
-                                        editingSplitIndex = index
-                                        showAddPaymentModeDialog = true
-                                    } else {
-                                        subTransactions = subTransactions.toMutableList().apply {
-                                            this[index] = subTx.copy(paymentMode = it)
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                            BrutalistDropdown(
-                                label = "PAID VIA",
-                                options = paidVia + "+ Add New",
-                                selectedOption = subTx.paidVia,
-                                onOptionSelected = {
-                                    if (it == "+ Add New") {
-                                        editingSplitIndex = index
-                                        showAddPaidViaDialog = true
-                                    } else {
-                                        subTransactions = subTransactions.toMutableList().apply {
-                                            this[index] = subTx.copy(paidVia = it)
-                                        }
-                                    }
-                                },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
+
 
                         // Notes field
                         BrutalistTextField(
@@ -1308,13 +1912,16 @@ fun ExpenseEntryScreen(
             BrutalistButton(
                 onClick = {
                     val nextId = subTransactions.maxOfOrNull { it.id }?.plus(1) ?: 1
+                    // Get data from split 1 (first transaction) for auto-prefill
+                    val firstSplit = subTransactions.firstOrNull()
+                    val inheritedGstPercent = if (globalGstPercent.isNotEmpty()) globalGstPercent else (firstSplit?.gstPercentage ?: "")
+                    
                     subTransactions = subTransactions + SubTransaction(
                         id = nextId,
-                        category = mainCategory,
-                        subcategory = mainSubcategory,
-                        labels = selectedLabels.toList(),
-                        paymentMode = mainPaymentMode,
-                        paidVia = mainPaidVia
+                        category = firstSplit?.category ?: mainCategory,
+                        subcategory = firstSplit?.subcategory ?: mainSubcategory,
+                        labels = firstSplit?.labels ?: selectedLabels.toList(),
+                        gstPercentage = inheritedGstPercent
                     )
                     expandedSplitId = nextId
                 },
@@ -1332,11 +1939,23 @@ fun ExpenseEntryScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        BrutalistButton(
-            onClick = { performSave() },
-            modifier = Modifier.fillMaxWidth().height(52.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(if (isEditing) "UPDATE EXPENSE" else "SAVE EXPENSE", fontWeight = FontWeight.Black, fontSize = 17.sp)
+            BrutalistButton(
+                onClick = { performSave(isDraft = true) },
+                modifier = Modifier.weight(1f).height(52.dp),
+                containerColor = White
+            ) {
+                Text("SAVE DRAFT", color = Black, fontWeight = FontWeight.Black, fontSize = 15.sp)
+            }
+            BrutalistButton(
+                onClick = { performSave(isDraft = false) },
+                modifier = Modifier.weight(1f).height(52.dp)
+            ) {
+                Text(if (isEditing) "UPDATE" else "SAVE", fontWeight = FontWeight.Black, fontSize = 17.sp)
+            }
         }
     }
 }

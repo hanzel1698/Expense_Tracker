@@ -178,6 +178,9 @@ class SyncService(private val context: Context) {
                             categories = mergeDataLists(localData.categories, remoteData.categories),
                             subcategoriesMap = mergeSubcategoriesMap(localData.subcategoriesMap, remoteData.subcategoriesMap),
                             labels = mergeDataLists(localData.labels, remoteData.labels),
+                            paymentModes = mergeDataLists(localData.paymentModes, remoteData.paymentModes),
+                            paidVia = mergeDataLists(localData.paidVia, remoteData.paidVia),
+                            storeHistory = mergeDataLists(localData.storeHistory, remoteData.storeHistory),
                             categoryBudgets = mergeBudgets(localData.categoryBudgets, remoteData.categoryBudgets),
                             subcategoryBudgets = mergeBudgets(localData.subcategoryBudgets, remoteData.subcategoryBudgets),
                             isDarkTheme = remoteData.isDarkTheme // Keep remote theme preference

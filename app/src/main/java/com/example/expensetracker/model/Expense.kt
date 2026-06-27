@@ -8,6 +8,7 @@ data class Expense(
     val groupId: String = UUID.randomUUID().toString(),
     val date: LocalDate,
     val storeName: String,
+    val location: String = "",
     val amount: Double,
     val category: String,
     val subcategory: String,
@@ -17,5 +18,9 @@ data class Expense(
     val unit: String? = null,
     val notes: String = "",
     val paymentMode: String = "",
-    val paidVia: String = ""
+    val paidVia: String = "",
+    val isDraft: Boolean = false,
+    val baseAmount: Double? = null,
+    val gstPercentage: Double? = null,
+    val gstAmount: Double? = null
 )

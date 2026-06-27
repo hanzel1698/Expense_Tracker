@@ -249,11 +249,7 @@ private fun DayCell(
         if (expense != null && expense > 0) {
             Column(modifier = Modifier.align(Alignment.BottomCenter)) {
                 Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(if(isSelected) themeWhite else themeBlack))
-                val formatted = when {
-                    expense % 1 == 0.0 -> String.format("%.0f", expense)
-                    (expense * 10) % 1 == 0.0 -> String.format("%.1f", expense)
-                    else -> String.format("%.2f", expense)
-                }
+                val formatted = java.lang.Math.round(expense).toString()
                 
                 val bannerBg = if (isSelected) themeWhite else if (isToday) themeBlack else themeDivider
                 val bannerTextCol = if (isSelected) themeBlack else if (isToday) themeWhite else themeBlack

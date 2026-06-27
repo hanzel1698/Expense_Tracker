@@ -111,7 +111,7 @@ fun BudgetEditDialog(
                             text = title,
                             fontWeight = FontWeight.ExtraBold,
                             fontSize = 18.sp,
-                            color = Black,
+                            color = themeBlack,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -120,14 +120,14 @@ fun BudgetEditDialog(
                                 text = subtitle,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
-                                color = Black.copy(alpha = 0.6f)
+                                color = themeBlack.copy(alpha = 0.6f)
                             )
                         }
                     }
                     Icon(
                         Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = Black,
+                        tint = themeBlack,
                         modifier = Modifier
                             .size(24.dp)
                             .clickable { onDismiss() }
@@ -152,7 +152,7 @@ fun BudgetEditDialog(
                     "QUICK SET",
                     fontWeight = FontWeight.Bold,
                     fontSize = 10.sp,
-                    color = Black.copy(alpha = 0.5f),
+                    color = themeBlack.copy(alpha = 0.5f),
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
@@ -212,7 +212,6 @@ fun BudgetEditDialog(
 
 @Composable
 fun BudgetScreen(
-    isMobilePortrait: Boolean = false,
     expenses: List<Expense>,
     categories: List<String>,
     subcategoriesMap: Map<String, List<String>>,
@@ -266,7 +265,7 @@ fun BudgetScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .then(if (isMobilePortrait) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+            .verticalScroll(rememberScrollState())
             .statusBarsPadding()
             .padding(16.dp)
     ) {
@@ -312,9 +311,8 @@ fun BudgetScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         // Mobile portrait mode: re-arrange according to MobilePortrait.md specs
-        if (isMobilePortrait) {
-            // Total budget allocation card at top
-            BrutalistCard(
+        // Total budget allocation card at top
+        BrutalistCard(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                 backgroundColor = themeWhite
             ) {
@@ -346,12 +344,12 @@ fun BudgetScreen(
                     val catSpent = categorySpending[category] ?: 0.0
 
                     val cardBg = if (isSelected) {
-                        if (isDark) Color(0xFF1A1A1A) else themeBlack
+                        if (isDark) Color(0xFF1A1A1A) else Color(0xFF000000)
                     } else {
                         themeWhite
                     }
                     val cardContentColor = if (isSelected) {
-                        if (isDark) themeBlack else themeWhite
+                        if (isDark) themeBlack else Color(0xFFFFFFFF)
                     } else {
                         themeBlack
                     }
@@ -363,13 +361,26 @@ fun BudgetScreen(
                         borderColor = themeBlack
                     ) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(category.uppercase(), fontWeight = FontWeight.ExtraBold, fontSize = 14.sp, color = cardContentColor, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                Icon(Icons.Default.Edit, contentDescription = "Edit", tint = cardContentColor, modifier = Modifier.size(16.dp).clickable { editingCategoryBudget = category })
+                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                    Text(
+                                        text = category.uppercase(),
+                                        fontWeight = FontWeight.ExtraBold,
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                        color = if (isSelected && !isDark) Color(0xFFFFFFFF) else cardContentColor
+                                    )
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = if (isSelected && !isDark) Color(0xFFFFFFFF) else cardContentColor, modifier = Modifier.size(16.dp).clickable { editingCategoryBudget = category })
+                                }
+                                Text(
+                                    text = "₹${String.format("%.0f", catBudget)}", 
+                                    fontWeight = FontWeight.Black, 
+                                    fontSize = 18.sp,
+                                    color = if (isSelected && !isDark) Color(0xFFFFFFFF) else cardContentColor
+                                )
+                                BudgetProgressBar(spent = catSpent, budget = catBudget, barColor = if (isSelected && !isDark) Color(0xFFFFFFFF) else cardContentColor, trackColor = (if (isSelected && !isDark) Color(0xFFFFFFFF) else cardContentColor).copy(alpha = 0.2f), height = 4.dp)
                             }
-                            Text("₹${String.format("%.0f", catBudget)}", fontWeight = FontWeight.Black, fontSize = 18.sp, color = cardContentColor)
-                            BudgetProgressBar(spent = catSpent, budget = catBudget, barColor = cardContentColor, trackColor = cardContentColor.copy(alpha = 0.2f), height = 4.dp)
-                        }
                     }
                 }
             }
@@ -392,13 +403,13 @@ fun BudgetScreen(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    val allocatedCardBg = if (isDark) Color(0xFF1A1A1A) else themeBlack
-                    val allocatedContentColor = if (isDark) themeBlack else themeWhite
+                    val allocatedCardBg = if (isDark) Color(0xFF1A1A1A) else Color(0xFF000000)
+                    val allocatedContentColor = if (isDark) themeBlack else Color(0xFFFFFFFF)
 
                     BrutalistCard(modifier = Modifier.weight(1f), backgroundColor = allocatedCardBg) {
                         Column(modifier = Modifier.padding(12.dp)) {
-                            Text("${category.uppercase()} ALLOCATED", color = allocatedContentColor.copy(alpha=0.6f), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                            Text("₹${String.format("%.0f", categoryAllocated)}", color = allocatedContentColor, fontWeight = FontWeight.Black, fontSize = 20.sp)
+                            Text("${category.uppercase()} ALLOCATED", color = if (isDark) allocatedContentColor.copy(alpha=0.6f) else Color(0xFFFFFFFF).copy(alpha=0.6f), fontWeight = FontWeight.Bold, fontSize = 10.sp)
+                            Text("₹${String.format("%.0f", categoryAllocated)}", color = if (isDark) allocatedContentColor else Color(0xFFFFFFFF), fontWeight = FontWeight.Black, fontSize = 20.sp)
                         }
                     }
                     
@@ -441,157 +452,7 @@ fun BudgetScreen(
                     }
                 }
             }
-        } else {
-            // Tablet/landscape mode: keep current layout
-            // ── Summary Cards (Dynamic to Selected Category) ──
-            val currentCategory = selectedCategory
-            val categoryTotalBudget = if (currentCategory != null) categoryBudgets[currentCategory] ?: 0.0 else 0.0
-            val categoryAllocated = remember(currentCategory, categoryBudgets, subcategoryBudgets, subcategoriesMap) {
-                if (currentCategory != null) {
-                    val subs = subcategoriesMap[currentCategory] ?: emptyList()
-                    subs.sumOf { sub ->
-                        subcategoryBudgets["$currentCategory/${sub ?: ""}"] ?: 0.0
-                    }
-                } else {
-                    0.0
-                }
-            }
-            val categoryUnallocated = categoryTotalBudget - categoryAllocated
 
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                val allocatedCardBg = if (isDark) Color(0xFF1A1A1A) else themeBlack
-                val allocatedContentColor = if (isDark) themeBlack else themeWhite
-
-                BrutalistCard(modifier = Modifier.weight(1f), backgroundColor = allocatedCardBg) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Text(if (currentCategory != null) "${currentCategory.uppercase()} ALLOCATED" else "ALLOCATED", color = allocatedContentColor.copy(alpha=0.6f), fontWeight = FontWeight.Bold, fontSize = 10.sp)
-                        Text("₹${String.format("%.0f", categoryAllocated)}", color = allocatedContentColor, fontWeight = FontWeight.Black, fontSize = 20.sp)
-                    }
-                }
-                
-                val isOverAllocated = categoryUnallocated < 0
-                BrutalistCard(
-                    modifier = Modifier.weight(1f),
-                    backgroundColor = if (isOverAllocated) Color(0xFFFF4444) else themeWhite
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        val unallocatedContentColor = if (isOverAllocated) themeWhite else themeBlack
-                        Text(if (isOverAllocated) "OVER-ALLOC" else if (currentCategory != null) "${currentCategory.uppercase()} UNALLOCATED" else "UNALLOCATED", color = unallocatedContentColor.copy(alpha=0.6f), fontWeight = FontWeight.Bold, fontSize = 9.sp)
-                        Text("₹${String.format("%.0f", kotlin.math.abs(categoryUnallocated))}", color = unallocatedContentColor, fontWeight = FontWeight.Black, fontSize = 20.sp)
-                    }
-                }
-            }
-
-            // ── Total Budget Card (Static) ──
-            BrutalistCard(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                backgroundColor = themeWhite
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("TOTAL BUDGET ALLOCATION", fontWeight = FontWeight.ExtraBold, fontSize = 11.sp, color = themeBlack.copy(alpha = 0.5f))
-                    }
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
-                        Text("₹${String.format("%.0f", overallBudget)}", fontWeight = FontWeight.Black, fontSize = 28.sp, color = themeBlack)
-                        Column(horizontalAlignment = Alignment.End) {
-                            val isOverBudget = totalSpent > overallBudget && overallBudget > 0
-                            Text("₹${String.format("%.0f", totalSpent)} SPENT", fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = if (isOverBudget) Color(0xFFFF4444) else themeBlack)
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    BudgetProgressBar(spent = totalSpent, budget = overallBudget, barColor = themeBlack, trackColor = themeBlack.copy(alpha = 0.1f))
-                }
-            }
-
-            // ── Split Section (Dynamic Scrollers) ──
-        Row(
-            modifier = Modifier.fillMaxWidth().weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // LEFT HALF: Categories
-            Column(modifier = Modifier.weight(1f)) {
-                Text("CATEGORIES", fontWeight = FontWeight.Black, fontSize = 10.sp, color = themeBlack.copy(alpha = 0.4f), modifier = Modifier.padding(bottom = 8.dp))
-                LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(categories) { category ->
-                        val isSelected = category == selectedCategory
-                        val catBudget = categoryBudgets[category] ?: 0.0
-                        val catSpent = categorySpending[category] ?: 0.0
-
-                        val cardBg = if (isSelected) {
-                            if (isDark) Color(0xFF1A1A1A) else themeBlack
-                        } else {
-                            themeWhite
-                        }
-                        val cardContentColor = if (isSelected) {
-                            if (isDark) themeBlack else themeWhite
-                        } else {
-                            themeBlack
-                        }
-
-                        BrutalistCard(
-                            modifier = Modifier.fillMaxWidth().clickable { selectedCategory = category },
-                            backgroundColor = cardBg,
-                            borderWidth = if (isSelected) 3.dp else 2.dp,
-                            borderColor = themeBlack
-                        ) {
-                            Column(modifier = Modifier.padding(12.dp)) {
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                    Text(category.uppercase(), fontWeight = FontWeight.ExtraBold, fontSize = 13.sp, color = cardContentColor, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                    Icon(Icons.Default.Edit, contentDescription = "Edit", tint = cardContentColor, modifier = Modifier.size(14.dp).clickable { editingCategoryBudget = category })
-                                }
-                                Text("₹${String.format("%.0f", catBudget)}", fontWeight = FontWeight.Black, fontSize = 16.sp, color = cardContentColor)
-                                BudgetProgressBar(spent = catSpent, budget = catBudget, barColor = cardContentColor, trackColor = cardContentColor.copy(alpha = 0.2f), height = 4.dp)
-                            }
-                        }
-                    }
-                }
-            }
-
-            // RIGHT HALF: Subcategories
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = if (currentCategory != null) "${currentCategory.uppercase()} SUBS" else "SELECT CAT",
-                    fontWeight = FontWeight.Black,
-                    fontSize = 10.sp,
-                    color = Black.copy(alpha = 0.4f),
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                
-                if (currentCategory != null) {
-                    val subs = subcategoriesMap[currentCategory] ?: emptyList()
-                    if (subs.isEmpty()) {
-                        Box(modifier = Modifier.fillMaxSize().border(2.dp, themeBlack), contentAlignment = Alignment.Center) {
-                            Text("NO SUBS", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha = 0.3f))
-                        }
-                    } else {
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(subs) { sub ->
-                                val subKey = "$currentCategory/${sub ?: ""}"
-                                val subBudget = subcategoryBudgets[subKey] ?: 0.0
-                                val subSpent = subcategorySpending[subKey] ?: 0.0
-                                
-                                BrutalistCard(modifier = Modifier.fillMaxWidth()) {
-                                    Column(modifier = Modifier.padding(10.dp)) {
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                            Text(sub.uppercase(), fontWeight = FontWeight.Bold, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                                            Icon(Icons.Default.Edit, contentDescription = "Edit", tint = themeBlack, modifier = Modifier.size(14.dp).clickable { editingSubcategoryBudget = currentCategory to sub })
-                                        }
-                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                                            Text("₹${String.format("%.2f", subBudget)}", fontWeight = FontWeight.Black, fontSize = 14.sp)
-                                            Text(text = "₹${String.format("%.2f", subSpent)} spent", fontSize = 9.sp, fontWeight = FontWeight.Bold, color = themeBlack.copy(alpha = 0.5f))
-                                        }
-                                        BudgetProgressBar(spent = subSpent, budget = subBudget, barColor = themeBlack, trackColor = themeBlack.copy(alpha = 0.1f), height = 5.dp)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
     }
 
     // ── Dialogs ──
@@ -620,6 +481,5 @@ fun BudgetScreen(
             },
             onDismiss = { editingSubcategoryBudget = null }
         )
-    }
     }
 }

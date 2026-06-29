@@ -100,6 +100,13 @@ data class SupabaseSyncResult(
     val storeHistory: List<String>? = null
 )
 
+enum class SupabaseSyncDirection {
+    /** Local → Supabase only (manual sync, app exit). */
+    PUSH_ONLY,
+    /** Supabase → Local only (app startup). */
+    PULL_ONLY
+}
+
 // ── Supabase Service Object ────────────────────────────────────────────────────
 
 object SupabaseService {
@@ -246,9 +253,10 @@ object SupabaseService {
             }
     }
 
-    // ── Full Sync ────────────────────────────────────────────────────────────────
+    // ── Sync ─────────────────────────────────────────────────────────────────────
 
     suspend fun syncAll(
+        direction: SupabaseSyncDirection,
         localExpenses: List<Expense>,
         localRecurring: List<RecurringExpense>,
         categories: List<String>,
@@ -263,72 +271,86 @@ object SupabaseService {
         return@withContext try {
             val json = Json { ignoreUnknownKeys = true }
 
-            // Remove remote rows that no longer exist locally (deleted or replaced drafts)
-            val remoteExpenses = pullExpenses() ?: emptyList()
-            val localIds = localExpenses.map { it.id }.toSet()
-            val orphanIds = remoteExpenses.map { it.id }.filter { it !in localIds }
-            softDeleteExpenses(orphanIds)
+            when (direction) {
+                SupabaseSyncDirection.PUSH_ONLY -> {
+                    // Remove remote rows that no longer exist locally (deleted or replaced drafts)
+                    val remoteExpenses = pullExpenses() ?: emptyList()
+                    val localIds = localExpenses.map { it.id }.toSet()
+                    val orphanIds = remoteExpenses.map { it.id }.filter { it !in localIds }
+                    softDeleteExpenses(orphanIds)
 
-            // Push everything local → Supabase
-            pushExpenses(localExpenses)
-            pushRecurringExpenses(localRecurring)
-            pushSetting("categories", json.encodeToJsonElement(categories))
-            pushSetting("subcategories_map", json.encodeToJsonElement(subcategoriesMap))
-            pushSetting("labels", json.encodeToJsonElement(labels))
-            pushSetting("payment_modes", json.encodeToJsonElement(paymentModes))
-            pushSetting("paid_via", json.encodeToJsonElement(paidVia))
-            pushSetting("category_budgets", json.encodeToJsonElement(categoryBudgets))
-            pushSetting("subcategory_budgets", json.encodeToJsonElement(subcategoryBudgets))
-            pushSetting("store_history", json.encodeToJsonElement(storeHistory))
+                    pushExpenses(localExpenses)
+                    pushRecurringExpenses(localRecurring)
+                    pushSetting("categories", json.encodeToJsonElement(categories))
+                    pushSetting("subcategories_map", json.encodeToJsonElement(subcategoriesMap))
+                    pushSetting("labels", json.encodeToJsonElement(labels))
+                    pushSetting("payment_modes", json.encodeToJsonElement(paymentModes))
+                    pushSetting("paid_via", json.encodeToJsonElement(paidVia))
+                    pushSetting("category_budgets", json.encodeToJsonElement(categoryBudgets))
+                    pushSetting("subcategory_budgets", json.encodeToJsonElement(subcategoryBudgets))
+                    pushSetting("store_history", json.encodeToJsonElement(storeHistory))
 
-            // Pull fresh data ← Supabase (last-write-wins from server)
-            val pulledExpenses = dedupeExpenses(pullExpenses() ?: localExpenses)
-            val pulledRecurring = pullRecurringExpenses() ?: localRecurring
-            val settingsMap = pullSettings() ?: emptyMap()
+                    Log.d(TAG, "Push sync complete: ${localExpenses.size} expenses pushed")
+                    SupabaseSyncResult(
+                        success = true,
+                        message = "Pushed to Supabase"
+                    )
+                }
 
-            // Decode individual settings
-            val pulledCategories = settingsMap["categories"]?.let {
-                try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
-            }
-            val pulledSubcategoriesMap = settingsMap["subcategories_map"]?.let {
-                try { json.decodeFromJsonElement<Map<String, List<String>>>(it) } catch (e: Exception) { null }
-            }
-            val pulledLabels = settingsMap["labels"]?.let {
-                try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
-            }
-            val pulledPaymentModes = settingsMap["payment_modes"]?.let {
-                try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
-            }
-            val pulledPaidVia = settingsMap["paid_via"]?.let {
-                try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
-            }
-            val pulledCategoryBudgets = settingsMap["category_budgets"]?.let {
-                try { json.decodeFromJsonElement<Map<String, Double>>(it) } catch (e: Exception) { null }
-            }
-            val pulledSubcategoryBudgets = settingsMap["subcategory_budgets"]?.let {
-                try { json.decodeFromJsonElement<Map<String, Double>>(it) } catch (e: Exception) { null }
-            }
-            val pulledStoreHistory = settingsMap["store_history"]?.let {
-                try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
-            }
+                SupabaseSyncDirection.PULL_ONLY -> {
+                    val pulledExpensesRaw = pullExpenses()
+                        ?: return@withContext SupabaseSyncResult(false, "Pull failed: could not fetch expenses")
+                    val pulledRecurring = pullRecurringExpenses()
+                        ?: return@withContext SupabaseSyncResult(false, "Pull failed: could not fetch recurring expenses")
+                    val settingsMap = pullSettings()
+                        ?: return@withContext SupabaseSyncResult(false, "Pull failed: could not fetch settings")
 
-            Log.d(TAG, "Full sync complete: ${pulledExpenses.size} expenses, ${pulledRecurring.size} recurring")
-            SupabaseSyncResult(
-                success = true,
-                message = "Synced successfully",
-                pulledExpenses = pulledExpenses,
-                pulledRecurring = pulledRecurring,
-                categories = pulledCategories,
-                subcategoriesMap = pulledSubcategoriesMap,
-                labels = pulledLabels,
-                paymentModes = pulledPaymentModes,
-                paidVia = pulledPaidVia,
-                categoryBudgets = pulledCategoryBudgets,
-                subcategoryBudgets = pulledSubcategoryBudgets,
-                storeHistory = pulledStoreHistory
-            )
+                    val pulledExpenses = dedupeExpenses(pulledExpensesRaw)
+
+                    val pulledCategories = settingsMap["categories"]?.let {
+                        try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
+                    }
+                    val pulledSubcategoriesMap = settingsMap["subcategories_map"]?.let {
+                        try { json.decodeFromJsonElement<Map<String, List<String>>>(it) } catch (e: Exception) { null }
+                    }
+                    val pulledLabels = settingsMap["labels"]?.let {
+                        try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
+                    }
+                    val pulledPaymentModes = settingsMap["payment_modes"]?.let {
+                        try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
+                    }
+                    val pulledPaidVia = settingsMap["paid_via"]?.let {
+                        try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
+                    }
+                    val pulledCategoryBudgets = settingsMap["category_budgets"]?.let {
+                        try { json.decodeFromJsonElement<Map<String, Double>>(it) } catch (e: Exception) { null }
+                    }
+                    val pulledSubcategoryBudgets = settingsMap["subcategory_budgets"]?.let {
+                        try { json.decodeFromJsonElement<Map<String, Double>>(it) } catch (e: Exception) { null }
+                    }
+                    val pulledStoreHistory = settingsMap["store_history"]?.let {
+                        try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
+                    }
+
+                    Log.d(TAG, "Pull sync complete: ${pulledExpenses.size} expenses pulled")
+                    SupabaseSyncResult(
+                        success = true,
+                        message = "Pulled from Supabase",
+                        pulledExpenses = pulledExpenses,
+                        pulledRecurring = pulledRecurring,
+                        categories = pulledCategories,
+                        subcategoriesMap = pulledSubcategoriesMap,
+                        labels = pulledLabels,
+                        paymentModes = pulledPaymentModes,
+                        paidVia = pulledPaidVia,
+                        categoryBudgets = pulledCategoryBudgets,
+                        subcategoryBudgets = pulledSubcategoryBudgets,
+                        storeHistory = pulledStoreHistory
+                    )
+                }
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Full sync failed: ${e.message}")
+            Log.e(TAG, "Sync failed: ${e.message}")
             SupabaseSyncResult(false, "Sync failed: ${e.message}")
         }
     }

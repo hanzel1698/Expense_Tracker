@@ -95,6 +95,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import com.example.expensetracker.sync.SyncService
 import com.example.expensetracker.sync.BackupInfo
 import com.example.expensetracker.sync.SupabaseService
+import com.example.expensetracker.sync.SupabaseSyncDirection
 import kotlinx.coroutines.launch
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
@@ -521,11 +522,54 @@ class MainActivity : ComponentActivity() {
                 var supabaseSyncSuccess by remember { mutableStateOf(false) }
                 var supabaseConnected by remember { mutableStateOf(false) }
 
+                fun applySupabasePullResult(result: com.example.expensetracker.sync.SupabaseSyncResult) {
+                    globalExpenses.clear()
+                    globalExpenses.addAll(result.pulledExpenses)
+                    recurringExpenses.clear()
+                    recurringExpenses.addAll(result.pulledRecurring)
+
+                    result.categories?.let {
+                        categories.clear()
+                        categories.addAll(it)
+                    }
+                    result.subcategoriesMap?.let {
+                        subcategoriesMap.clear()
+                        it.forEach { (cat, subs) ->
+                            subcategoriesMap[cat] = mutableStateListOf(*subs.toTypedArray())
+                        }
+                    }
+                    result.labels?.let {
+                        labels.clear()
+                        labels.addAll(it)
+                    }
+                    result.paymentModes?.let {
+                        paymentModes.clear()
+                        paymentModes.addAll(it)
+                    }
+                    result.paidVia?.let {
+                        paidVia.clear()
+                        paidVia.addAll(it)
+                    }
+                    result.categoryBudgets?.let {
+                        categoryBudgets.clear()
+                        categoryBudgets.putAll(it)
+                    }
+                    result.subcategoryBudgets?.let {
+                        subcategoryBudgets.clear()
+                        subcategoryBudgets.putAll(it)
+                    }
+                    result.storeHistory?.let {
+                        storeHistory.clear()
+                        storeHistory.addAll(it)
+                    }
+                }
+
                 val onSupabaseSyncNow: () -> Unit = {
                     coroutineScope.launch {
                         supabaseSyncing = true
                         supabaseSyncMessage = ""
-                        val result: com.example.expensetracker.sync.SupabaseSyncResult = SupabaseService.syncAll(
+                        val result = SupabaseService.syncAll(
+                            direction = SupabaseSyncDirection.PUSH_ONLY,
                             localExpenses = globalExpenses.toList(),
                             localRecurring = recurringExpenses.toList(),
                             categories = categories.toList(),
@@ -538,48 +582,6 @@ class MainActivity : ComponentActivity() {
                             storeHistory = storeHistory.toList()
                         )
                         if (result.success) {
-                            // Apply pulled data (last-write-wins)
-                            globalExpenses.clear()
-                            globalExpenses.addAll(result.pulledExpenses)
-                            recurringExpenses.clear()
-                            recurringExpenses.addAll(result.pulledRecurring)
-
-                            // Apply pulled settings (last-write-wins)
-                            result.categories?.let {
-                                categories.clear()
-                                categories.addAll(it)
-                            }
-                            result.subcategoriesMap?.let {
-                                subcategoriesMap.clear()
-                                it.forEach { (cat, subs) ->
-                                    subcategoriesMap[cat] = mutableStateListOf(*subs.toTypedArray())
-                                }
-                            }
-                            result.labels?.let {
-                                labels.clear()
-                                labels.addAll(it)
-                            }
-                            result.paymentModes?.let {
-                                paymentModes.clear()
-                                paymentModes.addAll(it)
-                            }
-                            result.paidVia?.let {
-                                paidVia.clear()
-                                paidVia.addAll(it)
-                            }
-                            result.categoryBudgets?.let {
-                                categoryBudgets.clear()
-                                categoryBudgets.putAll(it)
-                            }
-                            result.subcategoryBudgets?.let {
-                                subcategoryBudgets.clear()
-                                subcategoryBudgets.putAll(it)
-                            }
-                            result.storeHistory?.let {
-                                storeHistory.clear()
-                                storeHistory.addAll(it)
-                            }
-
                             supabaseSyncMessage = "✓ ${result.message}"
                             supabaseSyncSuccess = true
                             supabaseConnected = true
@@ -593,10 +595,30 @@ class MainActivity : ComponentActivity() {
 
                 // ── Startup Supabase Sync ──────────────────────────
                 LaunchedEffect(Unit) {
-                    // Trigger a sync after a small delay (1.5 seconds) to allow initial state load to settle
+                    // Pull remote data after a small delay to allow initial state load to settle
                     kotlinx.coroutines.delay(1500)
-                    android.util.Log.d("MainActivity", "Startup: Auto-triggering Supabase sync")
-                    onSupabaseSyncNow()
+                    android.util.Log.d("MainActivity", "Startup: Pulling from Supabase")
+                    supabaseSyncing = true
+                    val result = SupabaseService.syncAll(
+                        direction = SupabaseSyncDirection.PULL_ONLY,
+                        localExpenses = globalExpenses.toList(),
+                        localRecurring = recurringExpenses.toList(),
+                        categories = categories.toList(),
+                        subcategoriesMap = subcategoriesMap.mapValues { it.value.toList() },
+                        labels = labels.toList(),
+                        paymentModes = paymentModes.toList(),
+                        paidVia = paidVia.toList(),
+                        categoryBudgets = categoryBudgets.toMap(),
+                        subcategoryBudgets = subcategoryBudgets.toMap(),
+                        storeHistory = storeHistory.toList()
+                    )
+                    if (result.success) {
+                        applySupabasePullResult(result)
+                        supabaseConnected = true
+                    } else {
+                        android.util.Log.w("MainActivity", "Startup pull failed: ${result.message}")
+                    }
+                    supabaseSyncing = false
                 }
 
                 // ── Backgrounding (Exit) Supabase Sync ───────────────
@@ -604,9 +626,10 @@ class MainActivity : ComponentActivity() {
                 DisposableEffect(lifecycleOwner) {
                     val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
                         if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-                            android.util.Log.d("MainActivity", "Backgrounding: Auto-triggering Supabase sync")
+                            android.util.Log.d("MainActivity", "Backgrounding: Pushing to Supabase")
                             this@MainActivity.lifecycleScope.launch {
                                 SupabaseService.syncAll(
+                                    direction = SupabaseSyncDirection.PUSH_ONLY,
                                     localExpenses = globalExpenses.toList(),
                                     localRecurring = recurringExpenses.toList(),
                                     categories = categories.toList(),
@@ -2536,7 +2559,10 @@ fun DashboardScreen(
     }
 
     val expensesMap = remember(expenses) {
-        expenses.groupBy { it.date }.mapValues { entry -> entry.value.sumOf { it.amount } }
+        expenses
+            .filter { !it.isDraft }
+            .groupBy { it.date }
+            .mapValues { entry -> entry.value.sumOf { it.amount } }
     }
     val totalSpent = remember(monthlyExpenses) { monthlyExpenses.sumOf { it.amount } }
     val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy", java.util.Locale.getDefault())
@@ -4198,7 +4224,7 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "Project: xlxhikvvckszsyvnodkr.supabase.co\nSingle user \u2022 Manual sync \u2022 Last-write-wins",
+                        "Project: xlxhikvvckszsyvnodkr.supabase.co\nSingle user \u2022 Pull on startup \u2022 Push on exit \u2022 Manual push",
                         fontSize = 10.sp,
                         color = Color.White.copy(alpha = 0.3f),
                         lineHeight = 14.sp

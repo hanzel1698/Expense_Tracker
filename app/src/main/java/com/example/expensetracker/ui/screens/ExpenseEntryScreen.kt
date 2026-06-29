@@ -468,12 +468,19 @@ fun ExpenseEntryScreen(
             onUpdateStoreHistory(storeName)
         }
 
+        fun expenseIdForIndex(index: Int): String {
+            return groupToEdit?.getOrNull(index)?.id
+                ?: expenseToEdit?.takeIf { index == 0 }?.id
+                ?: java.util.UUID.randomUUID().toString()
+        }
+
         val expenseDate = selectedDate
         val sharedGroupId = expenseToEdit?.groupId ?: groupToEdit?.firstOrNull()?.groupId ?: java.util.UUID.randomUUID().toString()
         val listToSave = if (isSplit && subTransactions.size > 1) {
-            subTransactions.map { subTx ->
+            subTransactions.mapIndexed { index, subTx ->
                 val finalAmount = subTx.amount.toDoubleOrNull() ?: 0.0
                 Expense(
+                    id = expenseIdForIndex(index),
                     groupId = sharedGroupId,
                     date = expenseDate,
                     storeName = storeName,
@@ -499,6 +506,7 @@ fun ExpenseEntryScreen(
             val finalAmount = subTx.amount.toDoubleOrNull() ?: 0.0
             listOf(
                 Expense(
+                    id = expenseIdForIndex(0),
                     groupId = sharedGroupId,
                     date = expenseDate,
                     storeName = storeName,
@@ -523,6 +531,7 @@ fun ExpenseEntryScreen(
             val finalAmount = totalAmount.toDoubleOrNull() ?: 0.0
             listOf(
                 Expense(
+                    id = expenseIdForIndex(0),
                     groupId = sharedGroupId,
                     date = expenseDate,
                     storeName = storeName,

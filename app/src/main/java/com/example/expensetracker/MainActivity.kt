@@ -2536,7 +2536,10 @@ fun DashboardScreen(
     }
 
     val expensesMap = remember(expenses) {
-        expenses.groupBy { it.date }.mapValues { entry -> entry.value.sumOf { it.amount } }
+        expenses
+            .filter { !it.isDraft }
+            .groupBy { it.date }
+            .mapValues { entry -> entry.value.sumOf { it.amount } }
     }
     val totalSpent = remember(monthlyExpenses) { monthlyExpenses.sumOf { it.amount } }
     val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy", java.util.Locale.getDefault())

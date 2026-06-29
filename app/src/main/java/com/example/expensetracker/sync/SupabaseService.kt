@@ -213,6 +213,39 @@ object SupabaseService {
         }
     }
 
+    suspend fun softDeleteExpenses(ids: List<String>): Boolean = withContext(Dispatchers.IO) {
+        if (ids.isEmpty()) return@withContext true
+        return@withContext try {
+            val deletedAt = java.time.Instant.now().toString()
+            ids.forEach { id ->
+                supabase.postgrest["expenses"].update({
+                    set("deleted_at", deletedAt)
+                }) {
+                    filter { eq("id", id) }
+                }
+            }
+            Log.d(TAG, "Soft deleted ${ids.size} orphaned expenses from Supabase")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Soft delete expenses failed: ${e.message}")
+            false
+        }
+    }
+
+    /** Prefer submitted expenses when duplicate rows share the same groupId. */
+    fun dedupeExpenses(expenses: List<Expense>): List<Expense> {
+        return expenses
+            .groupBy { it.groupId }
+            .flatMap { (_, group) ->
+                if (group.size == 1) {
+                    group
+                } else {
+                    val submitted = group.filter { !it.isDraft }
+                    if (submitted.isNotEmpty()) submitted else listOf(group.first())
+                }
+            }
+    }
+
     // ── Full Sync ────────────────────────────────────────────────────────────────
 
     suspend fun syncAll(
@@ -230,6 +263,12 @@ object SupabaseService {
         return@withContext try {
             val json = Json { ignoreUnknownKeys = true }
 
+            // Remove remote rows that no longer exist locally (deleted or replaced drafts)
+            val remoteExpenses = pullExpenses() ?: emptyList()
+            val localIds = localExpenses.map { it.id }.toSet()
+            val orphanIds = remoteExpenses.map { it.id }.filter { it !in localIds }
+            softDeleteExpenses(orphanIds)
+
             // Push everything local → Supabase
             pushExpenses(localExpenses)
             pushRecurringExpenses(localRecurring)
@@ -243,7 +282,7 @@ object SupabaseService {
             pushSetting("store_history", json.encodeToJsonElement(storeHistory))
 
             // Pull fresh data ← Supabase (last-write-wins from server)
-            val pulledExpenses = pullExpenses() ?: localExpenses
+            val pulledExpenses = dedupeExpenses(pullExpenses() ?: localExpenses)
             val pulledRecurring = pullRecurringExpenses() ?: localRecurring
             val settingsMap = pullSettings() ?: emptyMap()
 

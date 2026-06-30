@@ -34,8 +34,8 @@ jobs:
       echo "Error: DEBUG_KEYSTORE_BASE64 secret is not set"
       exit 1
     fi
-    echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > debug.keystore
-    if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
+    echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > app/debug.keystore
+    if [ ! -f debug.keystore ] || [ ! -s app/debug.keystore ]; then
       echo "Error: Failed to decode keystore or file is empty"
       exit 1
     fi

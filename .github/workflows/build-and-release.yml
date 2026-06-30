@@ -56,6 +56,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: "app/build/outputs/apk/release/*.apk"
-          generateReleaseNotes: true
           tag: v${{ github.run_number }}
           token: ${{ secrets.GITHUB_TOKEN }}
+          generateReleaseNotes: false
+          body: "Release v${{ github.run_number }}"

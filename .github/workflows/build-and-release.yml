@@ -1,12 +1,10 @@
-name: Build and Release APK
+name: Android Build and Release
 
 on:
   push:
-    branches:
-      - master
+    branches: [main, master]
   pull_request:
-    branches:
-      - master
+    branches: [main, master]
   workflow_dispatch:
 
 jobs:
@@ -27,13 +25,26 @@ jobs:
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
+      - name: Run unit tests
+        run: ./gradlew test --stacktrace
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload debug APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
       - name: List build outputs
         run: find app/build/outputs -type f -name "*.apk" || echo "No APK files found"
 
-      - name: Upload APK as artifact
+      - name: Upload Release APK as artifact
         uses: actions/upload-artifact@v4
         with:
           name: app-release

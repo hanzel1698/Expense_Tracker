@@ -41,6 +41,12 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease
 
+      - name: Extract version from gradle
+        id: version
+        run: |
+          VERSION=$(grep "versionName" app/build.gradle.kts | grep -oP '"\K[^"]+')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
       - name: List build outputs
         run: find app/build/outputs -type f -name "*.apk" || echo "No APK files found"
 
@@ -56,7 +62,7 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           artifacts: "app/build/outputs/apk/release/*.apk"
-          tag: v${{ github.run_number }}
+          tag: v${{ steps.version.outputs.version }}
           token: ${{ secrets.GITHUB_TOKEN }}
           generateReleaseNotes: false
-          body: "Release v${{ github.run_number }}"
+          body: "Release v${{ steps.version.outputs.version }}"

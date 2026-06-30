@@ -39,3 +39,12 @@ jobs:
           name: app-release
           path: app/build/outputs/apk/release/*.apk
           retention-days: 30
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+        uses: ncipollo/release-action@v1
+        with:
+          artifacts: "app/build/outputs/apk/release/*.apk"
+          generateReleaseNotes: true
+          tag: v${{ github.run_number }}
+          token: ${{ secrets.GITHUB_TOKEN }}

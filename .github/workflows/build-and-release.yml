@@ -29,9 +29,17 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Decode and write keystore
-        run: |
-          echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > debug.keystore
-        shell: bash
+  run: |
+    if [ -z "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+      echo "Error: DEBUG_KEYSTORE_BASE64 secret is not set"
+      exit 1
+    fi
+    echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > debug.keystore
+    if [ ! -f debug.keystore ] || [ ! -s debug.keystore ]; then
+      echo "Error: Failed to decode keystore or file is empty"
+      exit 1
+    fi
+  shell: bash
 
       - name: Run unit tests
         run: ./gradlew test --stacktrace

@@ -35,7 +35,7 @@ jobs:
       exit 1
     fi
     echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > app/debug.keystore
-    if [ ! -f debug.keystore ] || [ ! -s app/debug.keystore ]; then
+    if [ ! -f app/debug.keystore ] || [ ! -s app/debug.keystore ]; then
       echo "Error: Failed to decode keystore or file is empty"
       exit 1
     fi
@@ -57,7 +57,7 @@ jobs:
       - name: Build Release APK
         run: ./gradlew assembleRelease --stacktrace
         env:
-          KEYSTORE_FILE: debug.keystore
+          KEYSTORE_FILE: app/debug.keystore
           KEYSTORE_PASSWORD: android
           KEY_ALIAS: androiddebugkey
           KEY_PASSWORD: android

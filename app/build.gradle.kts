@@ -132,7 +132,8 @@ dependencies {
     implementation(libs.androidx.compose.ui.graphics)
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
-
+    implementation("androidx.compose.material:material-icons-extended")
+    
     // Google Drive API dependencies
     implementation("com.google.apis:google-api-services-drive:v3-rev20220815-2.0.0")
     implementation("com.google.api-client:google-api-client-android:2.0.0")

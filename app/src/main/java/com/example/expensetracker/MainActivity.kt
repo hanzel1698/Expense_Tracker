@@ -50,6 +50,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import com.example.expensetracker.releasenotes.WhatsNewGate
 import com.example.expensetracker.ui.components.BrutalistButton
 import com.example.expensetracker.ui.components.BrutalistCard
 import com.example.expensetracker.ui.components.BrutalistTextField
@@ -235,6 +236,7 @@ class MainActivity : ComponentActivity() {
             
             var isDarkTheme by remember { mutableStateOf(initialData.isDarkTheme) }
             ExpenseTrackerTheme(darkTheme = isDarkTheme) {
+                WhatsNewGate {
                 val globalExpenses = remember { mutableStateListOf(*initialData.expenses.toTypedArray()) }
                 var currentScreen by remember { mutableStateOf(Screen.Dashboard) }
 
@@ -1493,6 +1495,7 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                }
                 }
             }
         }

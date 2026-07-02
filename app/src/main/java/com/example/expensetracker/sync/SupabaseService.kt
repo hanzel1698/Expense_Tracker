@@ -8,6 +8,7 @@ import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Columns
+import io.github.jan.supabase.serializer.KotlinXSerializer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -19,10 +20,17 @@ import java.time.format.DateTimeFormatter
 private const val SUPABASE_URL = "https://xlxhikvvckszsyvnodkr.supabase.co"
 private const val SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhseGhpa3Z2Y2tzenN5dm5vZGtyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4MTcyNzQsImV4cCI6MjA5NjM5MzI3NH0.F3wjfNlmXeoG_U5OAa2LnqFagtdy-WNJxhNWdre8kX0"
 
+private val supabaseJson = Json {
+    ignoreUnknownKeys = true
+    coerceInputValues = true
+    isLenient = true
+}
+
 private val supabase = createSupabaseClient(
     supabaseUrl = SUPABASE_URL,
     supabaseKey = SUPABASE_ANON_KEY
 ) {
+    defaultSerializer = KotlinXSerializer(supabaseJson)
     install(Postgrest)
 }
 

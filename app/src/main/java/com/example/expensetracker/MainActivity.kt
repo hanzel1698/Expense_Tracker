@@ -617,8 +617,12 @@ class MainActivity : ComponentActivity() {
                     if (result.success) {
                         applySupabasePullResult(result)
                         supabaseConnected = true
+                        supabaseSyncMessage = "✓ ${result.message} (${result.pulledExpenses.size} expenses)"
+                        supabaseSyncSuccess = true
                     } else {
                         android.util.Log.w("MainActivity", "Startup pull failed: ${result.message}")
+                        supabaseSyncMessage = "✕ ${result.message}"
+                        supabaseSyncSuccess = false
                     }
                     supabaseSyncing = false
                 }

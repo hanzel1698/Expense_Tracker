@@ -112,12 +112,25 @@ enum class SupabaseSyncDirection {
     /** Local → Supabase only (manual sync, app exit). */
     PUSH_ONLY,
     /** Supabase → Local only (app startup). */
-    PULL_ONLY
+    PULL_ONLY,
+    /** Push local data first, then pull and merge (app startup). */
+    PUSH_THEN_PULL
 }
 
 // ── Supabase Service Object ────────────────────────────────────────────────────
 
 object SupabaseService {
+
+    /** Prefer local recurring templates when the same id exists in both lists. */
+    fun mergeRecurringExpenses(
+        local: List<RecurringExpense>,
+        remote: List<RecurringExpense>
+    ): List<RecurringExpense> {
+        val localIds = local.map { it.id }.toSet()
+        val merged = local.toMutableList()
+        merged.addAll(remote.filter { it.id !in localIds })
+        return merged
+    }
 
     // ── Test Connection ──────────────────────────────────────────────────────────
 
@@ -305,7 +318,22 @@ object SupabaseService {
                     )
                 }
 
-                SupabaseSyncDirection.PULL_ONLY -> {
+                SupabaseSyncDirection.PULL_ONLY,
+                SupabaseSyncDirection.PUSH_THEN_PULL -> {
+                    if (direction == SupabaseSyncDirection.PUSH_THEN_PULL) {
+                        pushRecurringExpenses(localRecurring)
+                        pushExpenses(localExpenses)
+                        pushSetting("categories", json.encodeToJsonElement(categories))
+                        pushSetting("subcategories_map", json.encodeToJsonElement(subcategoriesMap))
+                        pushSetting("labels", json.encodeToJsonElement(labels))
+                        pushSetting("payment_modes", json.encodeToJsonElement(paymentModes))
+                        pushSetting("paid_via", json.encodeToJsonElement(paidVia))
+                        pushSetting("category_budgets", json.encodeToJsonElement(categoryBudgets))
+                        pushSetting("subcategory_budgets", json.encodeToJsonElement(subcategoryBudgets))
+                        pushSetting("store_history", json.encodeToJsonElement(storeHistory))
+                        Log.d(TAG, "Push-before-pull complete: ${localRecurring.size} recurring expenses pushed")
+                    }
+
                     val pulledExpensesRaw = pullExpenses()
                         ?: return@withContext SupabaseSyncResult(false, "Pull failed: could not fetch expenses")
                     val pulledRecurring = pullRecurringExpenses()
@@ -314,6 +342,11 @@ object SupabaseService {
                         ?: return@withContext SupabaseSyncResult(false, "Pull failed: could not fetch settings")
 
                     val pulledExpenses = dedupeExpenses(pulledExpensesRaw)
+                    val mergedRecurring = if (direction == SupabaseSyncDirection.PUSH_THEN_PULL) {
+                        mergeRecurringExpenses(localRecurring, pulledRecurring)
+                    } else {
+                        pulledRecurring
+                    }
 
                     val pulledCategories = settingsMap["categories"]?.let {
                         try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
@@ -340,12 +373,17 @@ object SupabaseService {
                         try { json.decodeFromJsonElement<List<String>>(it) } catch (e: Exception) { null }
                     }
 
-                    Log.d(TAG, "Pull sync complete: ${pulledExpenses.size} expenses pulled")
+                    val syncLabel = if (direction == SupabaseSyncDirection.PUSH_THEN_PULL) {
+                        "Synced with Supabase"
+                    } else {
+                        "Pulled from Supabase"
+                    }
+                    Log.d(TAG, "Pull sync complete: ${pulledExpenses.size} expenses, ${mergedRecurring.size} recurring")
                     SupabaseSyncResult(
                         success = true,
-                        message = "Pulled from Supabase",
+                        message = syncLabel,
                         pulledExpenses = pulledExpenses,
-                        pulledRecurring = pulledRecurring,
+                        pulledRecurring = mergedRecurring,
                         categories = pulledCategories,
                         subcategoriesMap = pulledSubcategoriesMap,
                         labels = pulledLabels,

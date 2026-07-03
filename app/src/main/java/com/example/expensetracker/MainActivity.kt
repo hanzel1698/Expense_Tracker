@@ -478,31 +478,6 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
-                // ── Recurring expense engine ──────────────────────────────────────
-                // Runs once on launch: generates any due Expense entries for all
-                // active recurring templates and stamps lastGeneratedDate on each.
-                LaunchedEffect(Unit) {
-                    val (newExpenses, updatedTemplates) =
-                        RecurringExpenseEngine.generate(recurringExpenses.toList())
-
-                    if (newExpenses.isNotEmpty()) {
-                        android.util.Log.d(
-                            "MainActivity",
-                            "RecurringExpenseEngine: adding ${newExpenses.size} expense(s)"
-                        )
-                        globalExpenses.addAll(newExpenses)
-                    }
-
-                    // Update lastGeneratedDate on templates that produced new entries
-                    updatedTemplates.forEachIndexed { i, updated ->
-                        if (i < recurringExpenses.size &&
-                            recurringExpenses[i].lastGeneratedDate != updated.lastGeneratedDate
-                        ) {
-                            recurringExpenses[i] = updated
-                        }
-                    }
-                }
-
                 // Budget state
                 val overallBudget by remember(categoryBudgets, categories) {
                     derivedStateOf {
@@ -517,6 +492,40 @@ class MainActivity : ComponentActivity() {
                 var showSyncMessage by remember { mutableStateOf("") }
                 var showSyncError by remember { mutableStateOf(false) }
                 val coroutineScope = rememberCoroutineScope()
+
+                fun applyRecurringEngineResult(
+                    newExpenses: List<Expense>,
+                    updatedTemplates: List<RecurringExpense>
+                ) {
+                    if (newExpenses.isNotEmpty()) {
+                        android.util.Log.d(
+                            "MainActivity",
+                            "RecurringExpenseEngine: adding ${newExpenses.size} expense(s)"
+                        )
+                        globalExpenses.addAll(newExpenses)
+                    }
+                    updatedTemplates.forEach { updated ->
+                        val index = recurringExpenses.indexOfFirst { it.id == updated.id }
+                        if (index >= 0 && recurringExpenses[index].lastGeneratedDate != updated.lastGeneratedDate) {
+                            recurringExpenses[index] = updated
+                        }
+                    }
+                }
+
+                fun pushRecurringExpensesToSupabase() {
+                    coroutineScope.launch {
+                        SupabaseService.pushRecurringExpenses(recurringExpenses.toList())
+                    }
+                }
+
+                fun updateRecurringExpenseAt(index: Int, re: RecurringExpense) {
+                    val resolvedIndex = recurringExpenses.indexOfFirst { it.id == re.id }
+                        .takeIf { it >= 0 } ?: index
+                    if (resolvedIndex in recurringExpenses.indices) {
+                        recurringExpenses[resolvedIndex] = re
+                        pushRecurringExpensesToSupabase()
+                    }
+                }
 
                 // ── Supabase Sync State ──────────────────────────────
                 var supabaseSyncing by remember { mutableStateOf(false) }
@@ -597,12 +606,12 @@ class MainActivity : ComponentActivity() {
 
                 // ── Startup Supabase Sync ──────────────────────────
                 LaunchedEffect(Unit) {
-                    // Pull remote data after a small delay to allow initial state load to settle
+                    // Push local edits first, then pull and merge so recurring changes are not lost.
                     kotlinx.coroutines.delay(1500)
-                    android.util.Log.d("MainActivity", "Startup: Pulling from Supabase")
+                    android.util.Log.d("MainActivity", "Startup: Syncing with Supabase")
                     supabaseSyncing = true
                     val result = SupabaseService.syncAll(
-                        direction = SupabaseSyncDirection.PULL_ONLY,
+                        direction = SupabaseSyncDirection.PUSH_THEN_PULL,
                         localExpenses = globalExpenses.toList(),
                         localRecurring = recurringExpenses.toList(),
                         categories = categories.toList(),
@@ -668,13 +677,10 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(Unit) {
                     Log.d("MainActivity", "Initial sign-in status check")
                     isSignedIn = syncService.isSignedIn()
-                    
-                    val (newOccurrences, updatedRe) = RecurringExpenseEngine.generate(recurringExpenses.toList(), LocalDate.now())
-                    if (newOccurrences.isNotEmpty()) {
-                        globalExpenses.addAll(newOccurrences)
-                        recurringExpenses.clear()
-                        recurringExpenses.addAll(updatedRe)
-                    }
+
+                    val (newOccurrences, updatedRe) =
+                        RecurringExpenseEngine.generate(recurringExpenses.toList(), LocalDate.now())
+                    applyRecurringEngineResult(newOccurrences, updatedRe)
                 }
                 
                 // Re-check sign-in status when refresh trigger changes
@@ -1032,17 +1038,17 @@ class MainActivity : ComponentActivity() {
                                     } else {
                                         recurringExpenses.add(re)
                                     }
+                                    pushRecurringExpensesToSupabase()
                                 },
                                 onEditRecurringExpense = { index: Int, re: RecurringExpense ->
-                                    val (newExp, updated) = RecurringExpenseEngine.generate(listOf(re))
-                                    if (newExp.isNotEmpty()) {
-                                        globalExpenses.addAll(newExp)
-                                        recurringExpenses[index] = updated.first()
-                                    } else {
-                                        recurringExpenses[index] = re
+                                    updateRecurringExpenseAt(index, re)
+                                },
+                                onDeleteRecurringExpense = { index: Int ->
+                                    if (index in recurringExpenses.indices) {
+                                        recurringExpenses.removeAt(index)
+                                        pushRecurringExpensesToSupabase()
                                     }
                                 },
-                                onDeleteRecurringExpense = { index: Int -> recurringExpenses.removeAt(index) },
                                 context = context,
                                 onSignIn = { 
                                     val signInIntent = syncService.getGoogleSignInClient().signInIntent
@@ -4757,7 +4763,7 @@ fun RecurringExpensesSection(
     val themeWhite = MaterialTheme.colorScheme.surface
 
     var showAddDialog by remember { mutableStateOf(false) }
-    var editingIndex by remember { mutableStateOf<Int?>(null) }
+    var editingId by remember { mutableStateOf<String?>(null) }
     var deleteConfirmIndex by remember { mutableStateOf<Int?>(null) }
     var detailIndex by remember { mutableStateOf<Int?>(null) }
 
@@ -4830,7 +4836,7 @@ fun RecurringExpensesSection(
                         RecurringExpenseListItem(
                             recurringExpense = re,
                             onClick = { detailIndex = index },
-                            onEdit = { editingIndex = index },
+                            onEdit = { editingId = re.id },
                             onDelete = { deleteConfirmIndex = index },
                             onToggleActive = { onEdit(index, re.copy(isActive = !re.isActive)) }
                         )
@@ -4884,25 +4890,36 @@ fun RecurringExpensesSection(
     }
 
     // Edit dialog
-    editingIndex?.let { idx ->
+    editingId?.let { id ->
+        val idx = recurringExpenses.indexOfFirst { it.id == id }
         if (idx in recurringExpenses.indices) {
-            RecurringExpenseDialog(
-                title = "EDIT RECURRING EXPENSE",
-                initial = recurringExpenses[idx],
-                categories = categories,
-                subcategoriesMap = subcategoriesMap,
-                labels = labels,
-                paymentModes = paymentModes,
-                paidVia = paidVia,
-                onAddCategory = onAddCategory,
-                onAddSubcategory = onAddSubcategory,
-                onAddLabel = onAddLabel,
-                onConfirm = { re ->
-                    onEdit(idx, re)
-                    editingIndex = null
-                },
-                onDismiss = { editingIndex = null }
-            )
+            key(id) {
+                RecurringExpenseDialog(
+                    title = "EDIT RECURRING EXPENSE",
+                    initial = recurringExpenses[idx],
+                    categories = categories,
+                    subcategoriesMap = subcategoriesMap,
+                    labels = labels,
+                    paymentModes = paymentModes,
+                    paidVia = paidVia,
+                    onAddCategory = onAddCategory,
+                    onAddSubcategory = onAddSubcategory,
+                    onAddLabel = onAddLabel,
+                    onConfirm = { re ->
+                        onEdit(idx, re)
+                        editingId = null
+                    },
+                    onDismiss = { editingId = null }
+                )
+            }
+        }
+    }
+
+    LaunchedEffect(editingId, recurringExpenses.size) {
+        editingId?.let { id ->
+            if (recurringExpenses.none { it.id == id }) {
+                editingId = null
+            }
         }
     }
 
@@ -5615,7 +5632,7 @@ fun RecurringExpenseDialog(
                     ) { Text("CANCEL", color = themeBlack, fontWeight = FontWeight.Bold) }
                     BrutalistButton(
                         onClick = {
-                            val amount = amountStr.toDoubleOrNull()
+                            val amount = amountStr.trim().toDoubleOrNull()
                             nameError = name.isBlank()
                             amountError = amount == null || amount <= 0.0
                             if (!nameError && !amountError) {

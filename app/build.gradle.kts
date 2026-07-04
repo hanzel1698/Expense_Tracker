@@ -76,11 +76,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = if (uploadSigning != null) {
-                signingConfigs.getByName("upload")
-            } else {
-                signingConfigs.getByName("debug")
-            }
+            signingConfig = signingConfigs.getByName("upload")
             isCrunchPngs = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

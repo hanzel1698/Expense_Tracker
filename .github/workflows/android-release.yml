@@ -57,8 +57,8 @@ jobs:
       - name: Run unit tests
         run: ./gradlew test --stacktrace
 
-      - name: Build release APK
-        run: ./gradlew assembleRelease --stacktrace
+      - name: Build release APK and AAB
+        run: ./gradlew assembleRelease bundleRelease --stacktrace
 
       - name: Find APK
         id: apk
@@ -70,6 +70,17 @@ jobs:
           fi
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$APK")" >> "$GITHUB_OUTPUT"
+
+      - name: Find AAB
+        id: aab
+        run: |
+          AAB=$(find . -path "*/build/outputs/bundle/release/*.aab" | head -1)
+          if [ -z "$AAB" ]; then
+            echo "Error: release AAB not found"
+            exit 1
+          fi
+          echo "path=$AAB" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$AAB")" >> "$GITHUB_OUTPUT"
 
       - name: Extract app version
         id: version
@@ -88,10 +99,17 @@ jobs:
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
+      - name: Upload release AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab-${{ steps.version.outputs.tag }}
+          path: ${{ steps.aab.outputs.path }}
+          retention-days: 30
+
       - name: Publish GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: ${{ steps.apk.outputs.path }}
+          artifacts: ${{ steps.apk.outputs.path }},${{ steps.aab.outputs.path }}
           tag: ${{ steps.version.outputs.tag }}
           name: Release ${{ steps.version.outputs.name }} (build ${{ github.run_number }})
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -101,4 +119,4 @@ jobs:
             **Version:** ${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }})
             **Commit:** ${{ github.sha }}
 
-            Download the APK below to install or update on your device.
+            Download the APK to sideload on a device, or the AAB to upload to Google Play.

@@ -28,6 +28,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Aurora (modern Material 3) UI - coexists with the brutalist MainActivity.
+             MainActivity redirects here when the persisted UI style is "modern". -->
+        <activity
+            android:name=".ui.modern.ModernMainActivity"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.ExpenseTracker" />
     </application>
 
 </manifest>

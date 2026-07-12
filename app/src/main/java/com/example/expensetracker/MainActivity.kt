@@ -226,8 +226,17 @@ class MainActivity : ComponentActivity() {
     
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // If the user chose the Aurora (modern) UI, hand off to it. The brutalist
+        // UI below remains fully intact and is used by default.
+        if (UiStylePreference.isModern(this)) {
+            startActivity(Intent(this, com.example.expensetracker.ui.modern.ModernMainActivity::class.java))
+            finish()
+            return
+        }
+
         enableEdgeToEdge()
-        
+
         syncService = SyncService(applicationContext)
         
         setContent {
@@ -4170,6 +4179,53 @@ fun SettingsScreen(
                 fontWeight = FontWeight.ExtraBold,
                 modifier = Modifier.padding(bottom = 16.dp)
             )
+
+        // ── UI Style Card (switch to the Aurora modern UI) ────────────────
+            run {
+                val themeBlackUi = MaterialTheme.colorScheme.onSurface
+                val themeWhiteUi = MaterialTheme.colorScheme.surface
+                val activityContext = androidx.compose.ui.platform.LocalContext.current
+                BrutalistCard(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "UI STYLE: BRUTALIST",
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.sp,
+                                color = themeBlackUi
+                            )
+                            Text(
+                                "Try the new Aurora (modern) look. Same data, same features.",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = themeBlackUi.copy(alpha = 0.6f)
+                            )
+                        }
+                        BrutalistButton(
+                            onClick = {
+                                com.example.expensetracker.UiStylePreference.setStyle(
+                                    activityContext,
+                                    com.example.expensetracker.UiStylePreference.STYLE_MODERN
+                                )
+                                activityContext.startActivity(
+                                    Intent(
+                                        activityContext,
+                                        com.example.expensetracker.ui.modern.ModernMainActivity::class.java
+                                    )
+                                )
+                                (activityContext as? android.app.Activity)?.finish()
+                            },
+                            containerColor = themeBlackUi
+                        ) {
+                            Text("GO MODERN", color = themeWhiteUi, fontWeight = FontWeight.ExtraBold, fontSize = 11.sp)
+                        }
+                    }
+                }
+            }
 
         // ── Supabase Sync Card (top) ──────────────────────────────────────
             val isDarkMode = isSystemInDarkTheme()

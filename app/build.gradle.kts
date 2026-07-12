@@ -76,7 +76,13 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("upload")
+            // Only apply the Play upload signing config when the keystore was
+            // resolved (resolveUploadSigning() found it, so the "upload" config
+            // was created above). Without it — e.g. CI debug builds with no
+            // secrets — findByName returns null and configuration no longer
+            // fails with "SigningConfig with name 'upload' not found". Release
+            // workflows install the keystore, so their signing is unchanged.
+            signingConfig = signingConfigs.findByName("upload")
             isCrunchPngs = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),

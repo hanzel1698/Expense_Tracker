@@ -36,8 +36,7 @@ import java.time.LocalDate
  * Aurora settings — feature parity with the brutalist SettingsScreen:
  * Supabase sync, Google Drive sync, CSV import/export, categories /
  * subcategories / labels / payment modes / paid-via management, recurring
- * expenses, dev mode (long-press version), sample data, clear-all,
- * plus the UI-style switch back to the brutalist app.
+ * expenses, dev mode (long-press version), sample data, and clear-all.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -83,8 +82,7 @@ fun ModernSettingsScreen(
     isSupabaseSyncing: Boolean = false,
     supabaseSyncMessage: String = "",
     supabaseSyncSuccess: Boolean = false,
-    isSupabaseConnected: Boolean = false,
-    onSwitchToBrutalist: () -> Unit = {}
+    isSupabaseConnected: Boolean = false
 ) {
     var selectedCategory by remember { mutableStateOf(categories.firstOrNull()) }
     val validSelection =
@@ -97,7 +95,6 @@ fun ModernSettingsScreen(
     var showPopulateConfirm by remember { mutableStateOf(false) }
     var showSignInDialog by remember { mutableStateOf(false) }
     var showBackupsDialog by remember { mutableStateOf(false) }
-    var showSwitchUiConfirm by remember { mutableStateOf(false) }
 
     val extras = LocalAuroraExtras.current
 
@@ -348,39 +345,6 @@ fun ModernSettingsScreen(
 
         Spacer(modifier = Modifier.height(20.dp))
 
-        // ── UI style switch ──────────────────────────────────────────────────
-        AuroraCard(
-            modifier = Modifier.fillMaxWidth(),
-            containerColor = MaterialTheme.colorScheme.tertiaryContainer
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "UI style",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer
-                    )
-                    Text(
-                        "You're using the Aurora (modern) UI. The original brutalist UI is still here.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f)
-                    )
-                }
-                FilledTonalButton(
-                    onClick = { showSwitchUiConfirm = true },
-                    shape = RoundedCornerShape(50)
-                ) { Text("Go brutal") }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
         // ── Version (long-press for dev mode) ────────────────────────────────
         Text(
             "Version 1.0.0 · Aurora",
@@ -478,19 +442,6 @@ fun ModernSettingsScreen(
                 onViewBackups()
             },
             onDismiss = { showBackupsDialog = false }
-        )
-    }
-
-    if (showSwitchUiConfirm) {
-        AuroraConfirmDialog(
-            title = "Switch to brutalist UI?",
-            message = "The app will restart in the original black-and-white brutalist interface. Your data is shared between both UIs, and you can switch back anytime from its Settings.",
-            confirmText = "Switch",
-            onConfirm = {
-                showSwitchUiConfirm = false
-                onSwitchToBrutalist()
-            },
-            onDismiss = { showSwitchUiConfirm = false }
         )
     }
 }

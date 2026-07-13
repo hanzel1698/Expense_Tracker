@@ -2,12 +2,7 @@
 
 An Android expense tracker built with Kotlin and Jetpack Compose. Track daily spending, manage budgets by category, set recurring expenses, and sync data across devices via Supabase or Google Drive.
 
-The app ships with **two complete UIs** that share the same data layer and feature set:
-
-- **Brutalist** (default) — the original high-contrast black/white design with bold typography (`MainActivity` + `ui/components`, `ui/screens`, `ui/theme`)
-- **Aurora (modern)** — a Material 3 redesign with a teal/emerald palette, rounded cards, tonal surfaces, and full light/dark themes (`ui/modern/`)
-
-Switch between them anytime from **Settings → UI style** in either UI. The choice is persisted, and since both UIs read and write the same `DataRepository`, all data, budgets, recurring rules, and sync settings carry over instantly.
+The UI is **Aurora** — a Material 3 design with a teal/emerald palette, rounded tonal cards, and full light/dark theming (`ui/modern/`). `ModernMainActivity` is the app's launcher activity.
 
 ## Features
 
@@ -18,7 +13,7 @@ Switch between them anytime from **Settings → UI style** in either UI. The cho
 - **Categories, subcategories & labels** — fully customizable taxonomy in Settings
 - **Supabase sync** — push/pull expenses, recurring items, and app settings (manual sync, last-write-wins)
 - **Google Drive sync** — backup and restore expense data to a Drive app folder
-- **Two selectable UIs** — brutalist black/white or Aurora Material 3, with identical inputs and outputs
+- **Aurora UI** — Material 3 design with light and dark themes
 
 ## Requirements
 
@@ -77,14 +72,15 @@ For production signing, configure a release keystore in `app/build.gradle.kts` a
 ExpenseTracker2/
 ├── app/                          # Main Android application module
 │   └── src/main/java/com/example/expensetracker/
-│       ├── MainActivity.kt       # Navigation, dashboard, settings
+│       ├── AppCommon.kt          # Shared types (Screen, ChartPoint) + CSV helpers
 │       ├── data/                 # DataRepository, RecurringExpenseEngine
 │       ├── model/                # Expense, RecurringExpense
 │       ├── sync/                 # SupabaseService, SyncService, Google Drive
-│       └── ui/
-│           ├── components/       # BrutalistCalendar, BrutalistComponents
-│           ├── screens/          # BudgetScreen, ExpenseEntryScreen
-│           └── theme/            # Colors, typography, Material theme
+│       └── ui/modern/            # Aurora (Material 3) UI
+│           ├── ModernMainActivity.kt  # Launcher: navigation, sync, CSV
+│           ├── components/       # Cards, fields, dropdowns, calendar, charts
+│           ├── screens/          # Dashboard, ExpenseList, Budget, Settings, ExpenseEntry
+│           └── theme/            # AuroraTheme (colors, typography, shapes)
 ├── gradle/                       # Version catalog (libs.versions.toml)
 ├── tools/                        # build-release.ps1
 └── .github/workflows/            # CI build workflow

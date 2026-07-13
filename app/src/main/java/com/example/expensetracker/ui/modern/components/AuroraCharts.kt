@@ -26,9 +26,8 @@ import com.example.expensetracker.ChartPoint
 import java.time.LocalDate
 
 /**
- * Rounded-bar trend chart. Feature-parity with BrutalistBarChartWithData:
- * amount labels above bars, period labels below, tap to select/deselect,
- * optional trend line, and a bar-click callback.
+ * Rounded-bar trend chart: amount labels above bars, period labels below,
+ * tap to select/deselect, optional trend line, and a bar-click callback.
  */
 @Composable
 fun AuroraBarChart(
@@ -183,9 +182,9 @@ fun AuroraBarChart(
 }
 
 /**
- * Horizontal category / subcategory breakdown chart. Feature-parity with the
- * brutalist HorizontalBarChart: tap drills into subcategories (or navigates when
- * already drilled in), long-press asks to open the matching expense list.
+ * Horizontal category / subcategory breakdown chart: tap drills into
+ * subcategories (or navigates when already drilled in), long-press asks to
+ * open the matching expense list.
  */
 @Composable
 fun AuroraHorizontalBarChart(

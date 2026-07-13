@@ -63,6 +63,19 @@ android {
     }
 
     signingConfigs {
+        // Pin the debug key to the keystore checked into the repo root so every
+        // build — local or CI, on any machine — shares one stable signing
+        // certificate. Without this, Android Gradle Plugin auto-generates a
+        // fresh random debug keystore per machine/CI run, so each build gets a
+        // different SHA-1 fingerprint: installs conflict ("App not installed")
+        // over any previous build, and Google Sign-In's registered OAuth
+        // client (matched by package name + SHA-1) stops matching.
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (uploadSigning != null) {
             create("upload") {
                 storeFile = uploadSigning.storeFile

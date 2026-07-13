@@ -1,6 +1,5 @@
 package com.example.expensetracker.ui.modern
 
-import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -28,10 +27,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.lifecycleScope
 import com.example.expensetracker.CSV_TEMPLATE_CONTENT
-import com.example.expensetracker.MainActivity
 import com.example.expensetracker.Screen
 import com.example.expensetracker.TrendDimension
-import com.example.expensetracker.UiStylePreference
 import com.example.expensetracker.data.AppData
 import com.example.expensetracker.data.DataRepository
 import com.example.expensetracker.data.RecurringExpenseEngine
@@ -57,10 +54,9 @@ import java.time.LocalDate
 import java.util.UUID
 
 /**
- * Entry point for the Aurora (modern) UI. Feature-parity with [MainActivity]:
- * same data layer, same sync behavior, same screens — different skin.
- * The original brutalist UI remains untouched in [MainActivity]; a persisted
- * preference decides which one the app opens with.
+ * Sole entry point for the app — the Aurora (Material 3) UI. Owns navigation,
+ * the in-memory data state, auto-save, Supabase + Google Drive sync, CSV
+ * import/export, and the recurring-expense engine.
  */
 class ModernMainActivity : ComponentActivity() {
     private lateinit var syncService: SyncService
@@ -980,17 +976,7 @@ class ModernMainActivity : ComponentActivity() {
                                     isSupabaseSyncing = supabaseSyncing,
                                     supabaseSyncMessage = supabaseSyncMessage,
                                     supabaseSyncSuccess = supabaseSyncSuccess,
-                                    isSupabaseConnected = supabaseConnected,
-                                    onSwitchToBrutalist = {
-                                        UiStylePreference.setStyle(
-                                            this@ModernMainActivity,
-                                            UiStylePreference.STYLE_BRUTALIST
-                                        )
-                                        startActivity(
-                                            Intent(this@ModernMainActivity, MainActivity::class.java)
-                                        )
-                                        finish()
-                                    }
+                                    isSupabaseConnected = supabaseConnected
                                 )
                                 Screen.Budget -> ModernBudgetScreen(
                                     expenses = globalExpenses,

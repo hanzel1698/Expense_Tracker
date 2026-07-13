@@ -63,3 +63,27 @@ jobs:
           name: app-debug-${{ github.run_number }}
           path: ${{ steps.apk.outputs.path }}
           retention-days: 14
+
+      - name: Build release APK
+        # No Play secrets on CI, so the release build falls back to debug-key
+        # signing (see app/build.gradle.kts) — an installable release-variant
+        # APK for testing, not for Play upload.
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: Find release APK
+        id: release_apk
+        run: |
+          APK=$(find . -path "*/build/outputs/apk/release/*.apk" | head -1)
+          if [ -z "$APK" ]; then
+            echo "Error: release APK not found"
+            exit 1
+          fi
+          echo "path=$APK" >> "$GITHUB_OUTPUT"
+          echo "name=$(basename "$APK")" >> "$GITHUB_OUTPUT"
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-${{ github.run_number }}
+          path: ${{ steps.release_apk.outputs.path }}
+          retention-days: 14

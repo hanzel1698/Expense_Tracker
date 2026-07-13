@@ -17,8 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // ── Aurora palette ────────────────────────────────────────────────────────────
-// A calm teal/emerald Material 3 palette with warm accents — the "modern" skin
-// that lives alongside the original brutalist black-and-white UI.
+// A calm teal/emerald Material 3 palette with warm accents — the app's UI theme.
 
 private val AuroraLightColors = lightColorScheme(
     primary = Color(0xFF006A60),

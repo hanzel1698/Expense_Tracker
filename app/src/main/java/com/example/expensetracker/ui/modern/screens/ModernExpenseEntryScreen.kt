@@ -21,9 +21,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.example.expensetracker.model.Expense
 import com.example.expensetracker.ui.modern.components.*
-import com.example.expensetracker.ui.screens.SubTransaction
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+
+/** One line item within a (possibly split) expense entry. */
+data class SubTransaction(
+    val id: Int,
+    var category: String = "",
+    var subcategory: String = "",
+    var amount: String = "",
+    var description: String = "",
+    var labels: List<String> = emptyList(),
+    var quantity: String = "",
+    var unit: String = "",
+    var notes: String = "",
+    var baseAmount: String = "",
+    var gstPercentage: String = "",
+    var gstAmount: String = ""
+)
 
 /**
  * Aurora expense entry — feature parity with the brutalist ExpenseEntryScreen:

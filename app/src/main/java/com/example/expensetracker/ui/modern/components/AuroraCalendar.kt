@@ -35,8 +35,8 @@ import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 
 /**
- * Modern calendar with per-day spend badges. Feature-parity with BrutalistCalendar:
- * month navigation, day selection, long-press action dialog (view expenses / new expense).
+ * Modern calendar with per-day spend badges: month navigation, day selection,
+ * and a long-press action dialog (view expenses / new expense).
  */
 @Composable
 fun AuroraCalendar(

@@ -426,6 +426,54 @@ class ModernMainActivity : ComponentActivity() {
                         subcategoryBudgets.putAll(newData.subcategoryBudgets)
                     }
 
+                    // ── Restore from a backup JSON file (no Drive sign-in needed) ───
+                    val restoreFileLauncher = rememberLauncherForActivityResult(
+                        contract = ActivityResultContracts.GetContent()
+                    ) { uri: Uri? ->
+                        if (uri != null) {
+                            coroutineScope.launch {
+                                isSyncing = true
+                                try {
+                                    val jsonData = context.contentResolver.openInputStream(uri)
+                                        ?.bufferedReader()
+                                        ?.use { it.readText() }
+                                    if (jsonData.isNullOrBlank()) {
+                                        showSyncMessage = "Restore failed: could not read file"
+                                        showSyncError = true
+                                    } else {
+                                        val result = syncService.restoreFromFile(jsonData)
+                                        result.fold(
+                                            onSuccess = { syncResult ->
+                                                if (syncResult.success) {
+                                                    reloadAllFromRepository()
+                                                    val removedMsg =
+                                                        if (syncResult.expensesRemoved > 0)
+                                                            ", ${syncResult.expensesRemoved} removed"
+                                                        else ""
+                                                    showSyncMessage =
+                                                        "Backup restored (${syncResult.expensesAdded} added$removedMsg)"
+                                                    showSyncError = false
+                                                } else {
+                                                    showSyncMessage = "Restore failed: ${syncResult.message}"
+                                                    showSyncError = true
+                                                }
+                                            },
+                                            onFailure = {
+                                                showSyncMessage = "Restore failed: ${it.message}"
+                                                showSyncError = true
+                                            }
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("ModernMainActivity", "Failed to restore from file", e)
+                                    showSyncMessage = "Restore failed: ${e.message}"
+                                    showSyncError = true
+                                }
+                                isSyncing = false
+                            }
+                        }
+                    }
+
                     Scaffold(
                         modifier = Modifier.fillMaxSize(),
                         containerColor = MaterialTheme.colorScheme.background,
@@ -796,6 +844,7 @@ class ModernMainActivity : ComponentActivity() {
                                         }
                                     },
                                     isSignedIn = isSignedIn,
+                                    onRestoreFromFile = { restoreFileLauncher.launch("*/*") },
                                     isDeveloperMode = isDeveloperMode,
                                     onToggleDevMode = {
                                         val currentTime = System.currentTimeMillis()

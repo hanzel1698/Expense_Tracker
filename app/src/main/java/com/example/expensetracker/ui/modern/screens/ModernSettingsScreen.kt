@@ -76,7 +76,8 @@ fun ModernSettingsScreen(
     onPopulateSampleData: () -> Unit = {},
     onClearAllData: () -> Unit = {},
     onExportTemplate: () -> Unit = {},
-    onImportCsv: () -> Unit = {}
+    onImportCsv: () -> Unit = {},
+    onRestoreFromFile: () -> Unit = {}
 ) {
     var selectedCategory by remember { mutableStateOf(categories.firstOrNull()) }
     val validSelection =
@@ -89,6 +90,7 @@ fun ModernSettingsScreen(
     var showPopulateConfirm by remember { mutableStateOf(false) }
     var showSignInDialog by remember { mutableStateOf(false) }
     var showBackupsDialog by remember { mutableStateOf(false) }
+    var showRestoreFileDialog by remember { mutableStateOf(false) }
 
     val extras = LocalAuroraExtras.current
 
@@ -161,6 +163,23 @@ fun ModernSettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
+                Spacer(modifier = Modifier.height(12.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(12.dp))
+                Text("Restore from a backup file", style = MaterialTheme.typography.titleSmall)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "Pick a backup JSON file from your device (e.g. one downloaded from Drive manually or shared to you) and merge it in — no sign-in required.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { showRestoreFileDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(50)
+                ) { Text("Restore from file…") }
             }
         }
 
@@ -366,6 +385,19 @@ fun ModernSettingsScreen(
                 onViewBackups()
             },
             onDismiss = { showBackupsDialog = false }
+        )
+    }
+
+    if (showRestoreFileDialog) {
+        AuroraConfirmDialog(
+            title = "Restore from file",
+            message = "Pick a backup JSON file to merge into your data. Existing categories, labels, and expenses are kept — only missing items are added.",
+            confirmText = "Choose file",
+            onConfirm = {
+                showRestoreFileDialog = false
+                onRestoreFromFile()
+            },
+            onDismiss = { showRestoreFileDialog = false }
         )
     }
 }

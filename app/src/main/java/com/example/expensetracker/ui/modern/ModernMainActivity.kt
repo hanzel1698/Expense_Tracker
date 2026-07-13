@@ -39,8 +39,6 @@ import com.example.expensetracker.model.RecurringExpense
 import com.example.expensetracker.parseCsvLine
 import com.example.expensetracker.parseFlexibleDate
 import com.example.expensetracker.releasenotes.WhatsNewGate
-import com.example.expensetracker.sync.SupabaseService
-import com.example.expensetracker.sync.SupabaseSyncDirection
 import com.example.expensetracker.sync.SyncService
 import com.example.expensetracker.ui.modern.components.AuroraConfirmDialog
 import com.example.expensetracker.ui.modern.screens.*
@@ -55,7 +53,7 @@ import java.util.UUID
 
 /**
  * Sole entry point for the app — the Aurora (Material 3) UI. Owns navigation,
- * the in-memory data state, auto-save, Supabase + Google Drive sync, CSV
+ * the in-memory data state, auto-save, Google Drive sync, CSV
  * import/export, and the recurring-expense engine.
  */
 class ModernMainActivity : ComponentActivity() {
@@ -375,152 +373,11 @@ class ModernMainActivity : ComponentActivity() {
                         }
                     }
 
-                    fun pushRecurringExpensesToSupabase() {
-                        coroutineScope.launch {
-                            SupabaseService.pushRecurringExpenses(recurringExpenses.toList())
-                        }
-                    }
-
                     fun updateRecurringExpenseAt(index: Int, re: RecurringExpense) {
                         val resolvedIndex = recurringExpenses.indexOfFirst { it.id == re.id }
                             .takeIf { it >= 0 } ?: index
                         if (resolvedIndex in recurringExpenses.indices) {
                             recurringExpenses[resolvedIndex] = re
-                            pushRecurringExpensesToSupabase()
-                        }
-                    }
-
-                    // ── Supabase sync state ────────────────────────────────────────
-                    var supabaseSyncing by remember { mutableStateOf(false) }
-                    var supabaseSyncMessage by remember { mutableStateOf("") }
-                    var supabaseSyncSuccess by remember { mutableStateOf(false) }
-                    var supabaseConnected by remember { mutableStateOf(false) }
-
-                    fun applySupabasePullResult(result: com.example.expensetracker.sync.SupabaseSyncResult) {
-                        globalExpenses.clear()
-                        globalExpenses.addAll(result.pulledExpenses)
-                        recurringExpenses.clear()
-                        recurringExpenses.addAll(result.pulledRecurring)
-
-                        result.categories?.let {
-                            categories.clear()
-                            categories.addAll(it)
-                        }
-                        result.subcategoriesMap?.let {
-                            subcategoriesMap.clear()
-                            it.forEach { (cat, subs) ->
-                                subcategoriesMap[cat] = mutableStateListOf(*subs.toTypedArray())
-                            }
-                        }
-                        result.labels?.let {
-                            labels.clear()
-                            labels.addAll(it)
-                        }
-                        result.paymentModes?.let {
-                            paymentModes.clear()
-                            paymentModes.addAll(it)
-                        }
-                        result.paidVia?.let {
-                            paidVia.clear()
-                            paidVia.addAll(it)
-                        }
-                        result.categoryBudgets?.let {
-                            categoryBudgets.clear()
-                            categoryBudgets.putAll(it)
-                        }
-                        result.subcategoryBudgets?.let {
-                            subcategoryBudgets.clear()
-                            subcategoryBudgets.putAll(it)
-                        }
-                        result.storeHistory?.let {
-                            storeHistory.clear()
-                            storeHistory.addAll(it)
-                        }
-                    }
-
-                    val onSupabaseSyncNow: () -> Unit = {
-                        coroutineScope.launch {
-                            supabaseSyncing = true
-                            supabaseSyncMessage = ""
-                            val result = SupabaseService.syncAll(
-                                direction = SupabaseSyncDirection.PUSH_ONLY,
-                                localExpenses = globalExpenses.toList(),
-                                localRecurring = recurringExpenses.toList(),
-                                categories = categories.toList(),
-                                subcategoriesMap = subcategoriesMap.mapValues { it.value.toList() },
-                                labels = labels.toList(),
-                                paymentModes = paymentModes.toList(),
-                                paidVia = paidVia.toList(),
-                                categoryBudgets = categoryBudgets.toMap(),
-                                subcategoryBudgets = subcategoryBudgets.toMap(),
-                                storeHistory = storeHistory.toList()
-                            )
-                            if (result.success) {
-                                supabaseSyncMessage = "✓ ${result.message}"
-                                supabaseSyncSuccess = true
-                                supabaseConnected = true
-                            } else {
-                                supabaseSyncMessage = "✕ ${result.message}"
-                                supabaseSyncSuccess = false
-                            }
-                            supabaseSyncing = false
-                        }
-                    }
-
-                    // Startup Supabase sync (push local edits first, then pull-merge)
-                    LaunchedEffect(Unit) {
-                        kotlinx.coroutines.delay(1500)
-                        supabaseSyncing = true
-                        val result = SupabaseService.syncAll(
-                            direction = SupabaseSyncDirection.PUSH_THEN_PULL,
-                            localExpenses = globalExpenses.toList(),
-                            localRecurring = recurringExpenses.toList(),
-                            categories = categories.toList(),
-                            subcategoriesMap = subcategoriesMap.mapValues { it.value.toList() },
-                            labels = labels.toList(),
-                            paymentModes = paymentModes.toList(),
-                            paidVia = paidVia.toList(),
-                            categoryBudgets = categoryBudgets.toMap(),
-                            subcategoryBudgets = subcategoryBudgets.toMap(),
-                            storeHistory = storeHistory.toList()
-                        )
-                        if (result.success) {
-                            applySupabasePullResult(result)
-                            supabaseConnected = true
-                            supabaseSyncMessage = "✓ ${result.message} (${result.pulledExpenses.size} expenses)"
-                            supabaseSyncSuccess = true
-                        } else {
-                            supabaseSyncMessage = "✕ ${result.message}"
-                            supabaseSyncSuccess = false
-                        }
-                        supabaseSyncing = false
-                    }
-
-                    // Push to Supabase when the app goes to the background
-                    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
-                    DisposableEffect(lifecycleOwner) {
-                        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
-                            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-                                this@ModernMainActivity.lifecycleScope.launch {
-                                    SupabaseService.syncAll(
-                                        direction = SupabaseSyncDirection.PUSH_ONLY,
-                                        localExpenses = globalExpenses.toList(),
-                                        localRecurring = recurringExpenses.toList(),
-                                        categories = categories.toList(),
-                                        subcategoriesMap = subcategoriesMap.mapValues { it.value.toList() },
-                                        labels = labels.toList(),
-                                        paymentModes = paymentModes.toList(),
-                                        paidVia = paidVia.toList(),
-                                        categoryBudgets = categoryBudgets.toMap(),
-                                        subcategoryBudgets = subcategoryBudgets.toMap(),
-                                        storeHistory = storeHistory.toList()
-                                    )
-                                }
-                            }
-                        }
-                        lifecycleOwner.lifecycle.addObserver(observer)
-                        onDispose {
-                            lifecycleOwner.lifecycle.removeObserver(observer)
                         }
                     }
 
@@ -858,7 +715,6 @@ class ModernMainActivity : ComponentActivity() {
                                         } else {
                                             recurringExpenses.add(re)
                                         }
-                                        pushRecurringExpensesToSupabase()
                                     },
                                     onEditRecurringExpense = { index, re ->
                                         updateRecurringExpenseAt(index, re)
@@ -866,7 +722,6 @@ class ModernMainActivity : ComponentActivity() {
                                     onDeleteRecurringExpense = { index ->
                                         if (index in recurringExpenses.indices) {
                                             recurringExpenses.removeAt(index)
-                                            pushRecurringExpensesToSupabase()
                                         }
                                     },
                                     onSignIn = {
@@ -971,12 +826,7 @@ class ModernMainActivity : ComponentActivity() {
                                         showClearDataDialog = true
                                     },
                                     onExportTemplate = { exportLauncher.launch("expense_import_template.csv") },
-                                    onImportCsv = { importLauncher.launch("*/*") },
-                                    onSupabaseSyncNow = onSupabaseSyncNow,
-                                    isSupabaseSyncing = supabaseSyncing,
-                                    supabaseSyncMessage = supabaseSyncMessage,
-                                    supabaseSyncSuccess = supabaseSyncSuccess,
-                                    isSupabaseConnected = supabaseConnected
+                                    onImportCsv = { importLauncher.launch("*/*") }
                                 )
                                 Screen.Budget -> ModernBudgetScreen(
                                     expenses = globalExpenses,

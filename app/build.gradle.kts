@@ -117,14 +117,7 @@ android {
 }
 
 dependencies {
-    // Supabase SDK
-    implementation(platform("io.github.jan-tennert.supabase:bom:3.1.4"))
-    implementation("io.github.jan-tennert.supabase:postgrest-kt")
-    implementation("io.ktor:ktor-client-android:3.1.3")
-    implementation("io.ktor:ktor-client-core:3.1.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("io.ktor:ktor-client-content-negotiation:3.1.3")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation(libs.gson)
     implementation(libs.androidx.core.ktx)

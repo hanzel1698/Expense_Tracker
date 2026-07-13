@@ -20,7 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -34,7 +33,7 @@ import java.time.LocalDate
 
 /**
  * Aurora settings — feature parity with the brutalist SettingsScreen:
- * Supabase sync, Google Drive sync, CSV import/export, categories /
+ * Google Drive sync, CSV import/export, categories /
  * subcategories / labels / payment modes / paid-via management, recurring
  * expenses, dev mode (long-press version), sample data, and clear-all.
  */
@@ -77,12 +76,7 @@ fun ModernSettingsScreen(
     onPopulateSampleData: () -> Unit = {},
     onClearAllData: () -> Unit = {},
     onExportTemplate: () -> Unit = {},
-    onImportCsv: () -> Unit = {},
-    onSupabaseSyncNow: () -> Unit = {},
-    isSupabaseSyncing: Boolean = false,
-    supabaseSyncMessage: String = "",
-    supabaseSyncSuccess: Boolean = false,
-    isSupabaseConnected: Boolean = false
+    onImportCsv: () -> Unit = {}
 ) {
     var selectedCategory by remember { mutableStateOf(categories.firstOrNull()) }
     val validSelection =
@@ -110,76 +104,6 @@ fun ModernSettingsScreen(
             style = MaterialTheme.typography.headlineLarge,
             modifier = Modifier.padding(bottom = 16.dp)
         )
-
-        // ── Supabase sync ────────────────────────────────────────────────────
-        AuroraCard(
-            modifier = Modifier.fillMaxWidth(),
-            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
-        ) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text("Supabase sync", style = MaterialTheme.typography.titleMedium)
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .background(
-                                        if (isSupabaseConnected) extras.success
-                                        else MaterialTheme.colorScheme.error,
-                                        CircleShape
-                                    )
-                            )
-                            Text(
-                                if (isSupabaseSyncing) "Syncing…"
-                                else if (isSupabaseConnected) "Connected"
-                                else "Not synced",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    Button(
-                        onClick = { if (!isSupabaseSyncing) onSupabaseSyncNow() },
-                        enabled = !isSupabaseSyncing,
-                        shape = RoundedCornerShape(50)
-                    ) {
-                        Icon(
-                            Icons.Default.Refresh,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(if (isSupabaseSyncing) "Syncing…" else "Sync now")
-                    }
-                }
-
-                if (supabaseSyncMessage.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        supabaseSyncMessage,
-                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                        color = if (supabaseSyncSuccess) extras.success else MaterialTheme.colorScheme.error
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    "Project: xlxhikvvckszsyvnodkr.supabase.co\nSingle user • Pull on startup • Push on exit • Manual push",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
 
         // ── Google Drive sync ────────────────────────────────────────────────
         AuroraCard(modifier = Modifier.fillMaxWidth()) {

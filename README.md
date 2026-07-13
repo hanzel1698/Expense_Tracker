@@ -1,6 +1,6 @@
 # Expense Tracker
 
-An Android expense tracker built with Kotlin and Jetpack Compose. Track daily spending, manage budgets by category, set recurring expenses, and sync data across devices via Supabase or Google Drive.
+An Android expense tracker built with Kotlin and Jetpack Compose. Track daily spending, manage budgets by category, set recurring expenses, and back up data to Google Drive.
 
 The UI is **Aurora** — a Material 3 design with a teal/emerald palette, rounded tonal cards, and full light/dark theming (`ui/modern/`). `ModernMainActivity` is the app's launcher activity.
 
@@ -11,7 +11,6 @@ The UI is **Aurora** — a Material 3 design with a teal/emerald palette, rounde
 - **Budgets** — allocate budgets by category and subcategory with unallocated balance tracking
 - **Recurring expenses** — define repeating charges with automatic generation
 - **Categories, subcategories & labels** — fully customizable taxonomy in Settings
-- **Supabase sync** — push/pull expenses, recurring items, and app settings (manual sync, last-write-wins)
 - **Google Drive sync** — backup and restore expense data to a Drive app folder
 - **Aurora UI** — Material 3 design with light and dark themes
 
@@ -20,7 +19,7 @@ The UI is **Aurora** — a Material 3 design with a teal/emerald palette, rounde
 - **Android Studio** Ladybug (2024.2+) or newer with Android SDK 36
 - **JDK 11+**
 - **Android device or emulator** running API 33 (Android 13) or higher
-- *(Optional)* Supabase project and Google Cloud OAuth credentials for cloud sync
+- *(Optional)* Google Cloud OAuth credentials for Drive sync
 
 ## Run from source
 
@@ -75,7 +74,7 @@ ExpenseTracker2/
 │       ├── AppCommon.kt          # Shared types (Screen, ChartPoint) + CSV helpers
 │       ├── data/                 # DataRepository, RecurringExpenseEngine
 │       ├── model/                # Expense, RecurringExpense
-│       ├── sync/                 # SupabaseService, SyncService, Google Drive
+│       ├── sync/                 # SyncService, Google Drive
 │       └── ui/modern/            # Aurora (Material 3) UI
 │           ├── ModernMainActivity.kt  # Launcher: navigation, sync, CSV
 │           ├── components/       # Cards, fields, dropdowns, calendar, charts
@@ -87,10 +86,6 @@ ExpenseTracker2/
 ```
 
 ## Sync configuration
-
-### Supabase
-
-Supabase URL and anon key are configured in `SupabaseService.kt`. Tables used: `expenses`, `recurring_expenses`, `app_settings`.
 
 ### Google Drive
 

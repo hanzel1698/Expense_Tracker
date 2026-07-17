@@ -13,7 +13,7 @@ on:
         required: false
         type: string
 
-run-name: ${{ inputs.run_name || format('PR Build (Debug APK) #{0}', github.run_number) }}
+run-name: "${{ inputs.run_name || format('PR Build (Debug APK) #{0}', github.run_number) }}"
 
 permissions:
   contents: read

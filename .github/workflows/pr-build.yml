@@ -3,13 +3,17 @@ name: PR Build (Debug APK)
 # Lightweight CI build that validates a branch/PR compiles and produces an
 # installable debug APK. Unlike the release workflows, this needs no signing
 # secrets — the debug build is signed with the checked-in debug keystore.
+# Manual-only: trigger from the Actions tab (workflow_dispatch).
 
 on:
-  pull_request:
-    branches: [main, master]
-  push:
-    branches-ignore: [main, master]
   workflow_dispatch:
+    inputs:
+      run_name:
+        description: Custom name for this run (optional)
+        required: false
+        type: string
+
+run-name: ${{ inputs.run_name || format('PR Build (Debug APK) #{0}', github.run_number) }}
 
 permissions:
   contents: read
@@ -20,7 +24,6 @@ concurrency:
 
 jobs:
   build:
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
 
     steps:

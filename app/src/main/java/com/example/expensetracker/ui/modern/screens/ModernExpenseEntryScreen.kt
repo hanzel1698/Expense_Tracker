@@ -13,12 +13,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.Popup
 import com.example.expensetracker.model.Expense
 import com.example.expensetracker.ui.modern.components.*
 import java.time.LocalDate
@@ -897,6 +903,7 @@ fun ModernExpenseEntryScreen(
         }
 
         // Store with suggestions
+        var storeFieldSize by remember { mutableStateOf(IntSize.Zero) }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -911,31 +918,39 @@ fun ModernExpenseEntryScreen(
                 label = "Store",
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onSizeChanged { storeFieldSize = it }
                     .onFocusChanged { focusState ->
                         if (!focusState.isFocused) showStoreSuggestions = false
                     }
             )
 
             if (showStoreSuggestions && filteredStoreSuggestions.isNotEmpty()) {
-                AuroraCard(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .offset(y = 60.dp),
-                    containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp)
+                val density = LocalDensity.current
+                Popup(
+                    alignment = Alignment.TopStart,
+                    offset = IntOffset(0, storeFieldSize.height + with(density) { 4.dp.roundToPx() }),
+                    onDismissRequest = { showStoreSuggestions = false }
                 ) {
-                    Column {
-                        filteredStoreSuggestions.forEach { suggestion ->
-                            Text(
-                                text = suggestion,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        storeName = suggestion
-                                        showStoreSuggestions = false
-                                    }
-                                    .padding(horizontal = 14.dp, vertical = 10.dp),
-                                style = MaterialTheme.typography.bodyMedium
-                            )
+                    AuroraCard(
+                        modifier = Modifier
+                            .width(with(density) { storeFieldSize.width.toDp() })
+                            .shadow(8.dp, RoundedCornerShape(20.dp)),
+                        containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp)
+                    ) {
+                        Column {
+                            filteredStoreSuggestions.forEach { suggestion ->
+                                Text(
+                                    text = suggestion,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            storeName = suggestion
+                                            showStoreSuggestions = false
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
                         }
                     }
                 }

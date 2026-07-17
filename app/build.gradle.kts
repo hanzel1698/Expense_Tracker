@@ -63,6 +63,19 @@ android {
     }
 
     signingConfigs {
+        // Pin the debug key to the keystore checked into the repo root so every
+        // build — local or CI, on any machine — shares one stable signing
+        // certificate. Without this, Android Gradle Plugin auto-generates a
+        // fresh random debug keystore per machine/CI run, so each build gets a
+        // different SHA-1 fingerprint: installs conflict ("App not installed")
+        // over any previous build, and Google Sign-In's registered OAuth
+        // client (matched by package name + SHA-1) stops matching.
+        getByName("debug") {
+            storeFile = rootProject.file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
         if (uploadSigning != null) {
             create("upload") {
                 storeFile = uploadSigning.storeFile
@@ -117,14 +130,7 @@ android {
 }
 
 dependencies {
-    // Supabase SDK
-    implementation(platform("io.github.jan-tennert.supabase:bom:3.1.4"))
-    implementation("io.github.jan-tennert.supabase:postgrest-kt")
-    implementation("io.ktor:ktor-client-android:3.1.3")
-    implementation("io.ktor:ktor-client-core:3.1.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
-    implementation("io.ktor:ktor-client-content-negotiation:3.1.3")
-    implementation("io.ktor:ktor-serialization-kotlinx-json:3.1.3")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation(libs.gson)
     implementation(libs.androidx.core.ktx)

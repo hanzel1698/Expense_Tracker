@@ -1,6 +1,6 @@
 # Expense Tracker
 
-An Android expense tracker built with Kotlin and Jetpack Compose. Track daily spending, manage budgets by category, set recurring expenses, and sync data across devices via Supabase or Google Drive.
+An Android expense tracker built with Kotlin and Jetpack Compose. Track daily spending, manage budgets by category, set recurring expenses, and back up data to Google Drive.
 
 The UI is **Aurora** — a Material 3 design with a teal/emerald palette, rounded tonal cards, and full light/dark theming (`ui/modern/`). `ModernMainActivity` is the app's launcher activity.
 
@@ -11,7 +11,6 @@ The UI is **Aurora** — a Material 3 design with a teal/emerald palette, rounde
 - **Budgets** — allocate budgets by category and subcategory with unallocated balance tracking
 - **Recurring expenses** — define repeating charges with automatic generation
 - **Categories, subcategories & labels** — fully customizable taxonomy in Settings
-- **Supabase sync** — push/pull expenses, recurring items, and app settings (manual sync, last-write-wins)
 - **Google Drive sync** — backup and restore expense data to a Drive app folder
 - **Aurora UI** — Material 3 design with light and dark themes
 
@@ -20,7 +19,7 @@ The UI is **Aurora** — a Material 3 design with a teal/emerald palette, rounde
 - **Android Studio** Ladybug (2024.2+) or newer with Android SDK 36
 - **JDK 11+**
 - **Android device or emulator** running API 33 (Android 13) or higher
-- *(Optional)* Supabase project and Google Cloud OAuth credentials for cloud sync
+- *(Optional)* Google Cloud OAuth credentials for Drive sync
 
 ## Run from source
 
@@ -75,7 +74,7 @@ ExpenseTracker2/
 │       ├── AppCommon.kt          # Shared types (Screen, ChartPoint) + CSV helpers
 │       ├── data/                 # DataRepository, RecurringExpenseEngine
 │       ├── model/                # Expense, RecurringExpense
-│       ├── sync/                 # SupabaseService, SyncService, Google Drive
+│       ├── sync/                 # SyncService, Google Drive
 │       └── ui/modern/            # Aurora (Material 3) UI
 │           ├── ModernMainActivity.kt  # Launcher: navigation, sync, CSV
 │           ├── components/       # Cards, fields, dropdowns, calendar, charts
@@ -88,17 +87,46 @@ ExpenseTracker2/
 
 ## Sync configuration
 
-### Supabase
+### Signing (debug/CI builds)
 
-Supabase URL and anon key are configured in `SupabaseService.kt`. Tables used: `expenses`, `recurring_expenses`, `app_settings`.
+The debug build type is pinned to the `debug.keystore` checked into the repo
+root (`app/build.gradle.kts`), so every debug build — from `pr-build.yml`,
+`assembleDebug` locally, or `assembleRelease` when no Play upload secret is
+configured — always shares the same fixed signing certificate:
+
+```
+SHA-1: 5C:2B:BB:EA:6B:CD:69:AA:B8:31:C7:12:39:80:AD:42:3A:22:55:6F
+```
+
+This means installing a newer debug/CI-built APK over an older one never
+fails with "App not installed" (signature conflict), and Google Sign-In
+(below) only needs to be registered once.
 
 ### Google Drive
 
-Place your OAuth client secret JSON at:
-```
-app/client_secret_<your-client-id>.apps.googleusercontent.com.json
-```
-This file is gitignored. Update `app/src/main/res/values/google-services.xml` with your API key if needed.
+Google Sign-In here uses Android's package-name + SHA-1 matching — there's no
+client ID or secret embedded in the app (the placeholder values in
+`app/src/main/res/values/google-services.xml` aren't read by any code; ignore
+that file). To make Drive sync work for a given signing key:
+
+1. In [Google Cloud Console](https://console.cloud.google.com), open the
+   project that has the **Google Drive API** enabled for this app (or enable
+   it in a project of your choice).
+2. **APIs & Services → Credentials → Create Credentials → OAuth client ID**,
+   application type **Android**.
+3. Package name: `com.example.expensetracker`.
+4. SHA-1 certificate fingerprint: the debug fingerprint above (for
+   `pr-build.yml`/local debug builds), or the fingerprint of your Play upload
+   keystore if you're distributing a Play-signed release.
+5. Save. No further wiring is needed in code — Play Services resolves the
+   OAuth client automatically from the installed APK's package + signature
+   at sign-in time.
+6. If the OAuth consent screen is in **Testing** mode, add your Google
+   account as a test user, or publish it if you'd rather not re-consent
+   periodically.
+
+Once that SHA-1 is registered, it stays valid for every future debug/CI
+build — no need to repeat this unless you switch to a different signing key.
 
 ## License
 

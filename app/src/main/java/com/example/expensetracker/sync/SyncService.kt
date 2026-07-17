@@ -106,6 +106,14 @@ class SyncService(private val context: Context) {
         }
     }
     
+    /** Restore from a backup JSON file picked from local storage — no Drive sign-in required. */
+    suspend fun restoreFromFile(
+        jsonData: String,
+        conflictStrategy: ConflictResolutionStrategy = ConflictResolutionStrategy.MERGE_BY_DATE
+    ): Result<SyncResult> {
+        return validateAndMergeData(jsonData, conflictStrategy)
+    }
+
     suspend fun listAvailableBackups(): Result<List<BackupInfo>> {
         return try {
             if (!driveManager.isSignedIn()) {

@@ -118,6 +118,7 @@ class ModernMainActivity : ComponentActivity() {
 
                     var expenseToEdit by remember { mutableStateOf<Expense?>(null) }
                     var groupToEdit by remember { mutableStateOf<List<Expense>?>(null) }
+                    var selectedExpenseIdInGroup by remember { mutableStateOf<String?>(null) }
                     var initialDateForNewExpense by remember { mutableStateOf<LocalDate?>(null) }
 
                     val categories = remember { mutableStateListOf(*initialData.categories.toTypedArray()) }
@@ -507,6 +508,7 @@ class ModernMainActivity : ComponentActivity() {
                                     if (it != Screen.AddExpense) {
                                         expenseToEdit = null
                                         groupToEdit = null
+                                        selectedExpenseIdInGroup = null
                                     }
                                 }
                             )
@@ -549,6 +551,7 @@ class ModernMainActivity : ComponentActivity() {
                                     viewingGroupIdFilter = null
                                     expenseToEdit = null
                                     groupToEdit = null
+                                    selectedExpenseIdInGroup = null
                                     initialDateForNewExpense = null
                                 }
                             }
@@ -596,6 +599,7 @@ class ModernMainActivity : ComponentActivity() {
                                     onNewExpense = { date ->
                                         expenseToEdit = null
                                         groupToEdit = null
+                                        selectedExpenseIdInGroup = null
                                         initialDateForNewExpense = date
                                         currentScreen = Screen.AddExpense
                                     },
@@ -636,6 +640,7 @@ class ModernMainActivity : ComponentActivity() {
                                         onAddExpense = {
                                             expenseToEdit = null
                                             groupToEdit = null
+                                            selectedExpenseIdInGroup = null
                                             currentScreen = Screen.AddExpense
                                         },
                                         onEditExpense = { expense ->
@@ -643,9 +648,11 @@ class ModernMainActivity : ComponentActivity() {
                                             if (group.size > 1) {
                                                 groupToEdit = group
                                                 expenseToEdit = null
+                                                selectedExpenseIdInGroup = expense.id
                                             } else {
                                                 expenseToEdit = expense
                                                 groupToEdit = null
+                                                selectedExpenseIdInGroup = null
                                             }
                                             currentScreen = Screen.AddExpense
                                         },
@@ -678,6 +685,7 @@ class ModernMainActivity : ComponentActivity() {
                                     onAddExpense = {
                                         expenseToEdit = null
                                         groupToEdit = null
+                                        selectedExpenseIdInGroup = null
                                         currentScreen = Screen.AddExpense
                                     },
                                     onEditExpense = { expense ->
@@ -685,9 +693,11 @@ class ModernMainActivity : ComponentActivity() {
                                         if (group.size > 1) {
                                             groupToEdit = group
                                             expenseToEdit = null
+                                            selectedExpenseIdInGroup = expense.id
                                         } else {
                                             expenseToEdit = expense
                                             groupToEdit = null
+                                            selectedExpenseIdInGroup = null
                                         }
                                         currentScreen = Screen.AddExpense
                                     },
@@ -910,6 +920,7 @@ class ModernMainActivity : ComponentActivity() {
                                     storeHistory = storeHistory.toList(),
                                     expenseToEdit = expenseToEdit,
                                     groupToEdit = groupToEdit,
+                                    initialSelectedExpenseId = selectedExpenseIdInGroup,
                                     initialDate = initialDateForNewExpense,
                                     onSave = { newExpenses ->
                                         val gid = expenseToEdit?.groupId ?: groupToEdit?.firstOrNull()?.groupId
@@ -919,12 +930,14 @@ class ModernMainActivity : ComponentActivity() {
                                         globalExpenses.addAll(newExpenses)
                                         expenseToEdit = null
                                         groupToEdit = null
+                                        selectedExpenseIdInGroup = null
                                         initialDateForNewExpense = null
                                         currentScreen = Screen.Dashboard
                                     },
                                     onBack = {
                                         expenseToEdit = null
                                         groupToEdit = null
+                                        selectedExpenseIdInGroup = null
                                         initialDateForNewExpense = null
                                         currentScreen = Screen.Dashboard
                                     },

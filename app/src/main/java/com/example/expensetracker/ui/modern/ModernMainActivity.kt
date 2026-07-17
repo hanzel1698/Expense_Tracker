@@ -59,6 +59,7 @@ import java.util.UUID
 class ModernMainActivity : ComponentActivity() {
     private lateinit var syncService: SyncService
     private var signInRefreshTrigger by mutableStateOf(0)
+    private var signInErrorMessage by mutableStateOf<String?>(null)
 
     private val signInLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -76,9 +77,12 @@ class ModernMainActivity : ComponentActivity() {
             refreshSignInStatus()
         } catch (e: ApiException) {
             Log.e("ModernMainActivity", "Sign-in failed with ApiException: ${e.statusCode}", e)
+            signInErrorMessage = "Google sign-in failed (code ${e.statusCode}). " +
+                "Check that this app's SHA-1 is registered in Google Cloud Console."
             refreshSignInStatus()
         } catch (e: Exception) {
             Log.e("ModernMainActivity", "Sign-in failed with unexpected error", e)
+            signInErrorMessage = "Google sign-in failed: ${e.message}"
             refreshSignInStatus()
         }
     }
@@ -397,6 +401,14 @@ class ModernMainActivity : ComponentActivity() {
                     LaunchedEffect(signInRefreshTrigger) {
                         if (signInRefreshTrigger > 0) {
                             isSignedIn = syncService.isSignedIn()
+                        }
+                    }
+
+                    LaunchedEffect(signInErrorMessage) {
+                        signInErrorMessage?.let {
+                            showSyncMessage = it
+                            showSyncError = true
+                            signInErrorMessage = null
                         }
                     }
 

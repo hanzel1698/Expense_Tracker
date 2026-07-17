@@ -7,6 +7,13 @@ name: PR Build (Debug APK)
 
 on:
   workflow_dispatch:
+    inputs:
+      run_name:
+        description: Custom name for this run (optional)
+        required: false
+        type: string
+
+run-name: ${{ inputs.run_name || format('PR Build (Debug APK) #{0}', github.run_number) }}
 
 permissions:
   contents: read

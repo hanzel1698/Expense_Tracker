@@ -65,6 +65,7 @@ fun ModernExpenseEntryScreen(
     storeHistory: List<String> = emptyList(),
     expenseToEdit: Expense? = null,
     groupToEdit: List<Expense>? = null,
+    initialSelectedExpenseId: String? = null,
     onSave: (List<Expense>) -> Unit,
     onBack: () -> Unit,
     onAddCategory: (String) -> Unit = {},
@@ -156,7 +157,12 @@ fun ModernExpenseEntryScreen(
 
     var isSplit by remember { mutableStateOf(initialIsSplit) }
     var subTransactions by remember { mutableStateOf(initialSubTransactions) }
-    var expandedSplitId by remember { mutableStateOf<Int?>(subTransactions.firstOrNull()?.id) }
+    val initialExpandedSplitId = remember {
+        val selectedIndex = groupToEdit?.indexOfFirst { it.id == initialSelectedExpenseId } ?: -1
+        if (selectedIndex >= 0) subTransactions.getOrNull(selectedIndex)?.id
+        else subTransactions.firstOrNull()?.id
+    }
+    var expandedSplitId by remember { mutableStateOf<Int?>(initialExpandedSplitId) }
 
     var showExitConfirmation by remember { mutableStateOf(false) }
     var selectedDate by remember { mutableStateOf(initialDateValue) }

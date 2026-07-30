@@ -134,6 +134,7 @@ class ModernMainActivity : ComponentActivity() {
                     val paidVia = remember { mutableStateListOf(*initialData.paidVia.toTypedArray()) }
                     val recurringExpenses = remember { mutableStateListOf(*initialData.recurringExpenses.toTypedArray()) }
                     val storeHistory = remember { mutableStateListOf(*initialData.storeHistory.toTypedArray()) }
+                    val storeLocationHistory = remember { mutableStateMapOf(*initialData.storeLocationHistory.toList().toTypedArray()) }
                     val categoryBudgets = remember { mutableStateMapOf(*initialData.categoryBudgets.toList().toTypedArray()) }
                     val subcategoryBudgets = remember { mutableStateMapOf(*initialData.subcategoryBudgets.toList().toTypedArray()) }
 
@@ -342,6 +343,7 @@ class ModernMainActivity : ComponentActivity() {
                                 categoryBudgets = categoryBudgets.toMap(),
                                 subcategoryBudgets = subcategoryBudgets.toMap(),
                                 storeHistory = storeHistory.toList(),
+                                storeLocationHistory = storeLocationHistory.toMap(),
                                 isDarkTheme = isDarkTheme,
                                 recurringExpenses = recurringExpenses.toList()
                             )
@@ -423,6 +425,8 @@ class ModernMainActivity : ComponentActivity() {
                         labels.addAll(newData.labels)
                         storeHistory.clear()
                         storeHistory.addAll(newData.storeHistory)
+                        storeLocationHistory.clear()
+                        storeLocationHistory.putAll(newData.storeLocationHistory)
                         subcategoriesMap.clear()
                         newData.subcategoriesMap.forEach { (cat, subs) ->
                             subcategoriesMap[cat] = mutableStateListOf(*subs.toTypedArray())
@@ -918,6 +922,7 @@ class ModernMainActivity : ComponentActivity() {
                                     paymentModes = paymentModes,
                                     paidVia = paidVia,
                                     storeHistory = storeHistory.toList(),
+                                    storeLocationHistory = storeLocationHistory.toMap(),
                                     expenseToEdit = expenseToEdit,
                                     groupToEdit = groupToEdit,
                                     initialSelectedExpenseId = selectedExpenseIdInGroup,
@@ -960,6 +965,13 @@ class ModernMainActivity : ComponentActivity() {
                                         } else if (newStore.isNotBlank() && storeHistory.contains(newStore)) {
                                             storeHistory.remove(newStore)
                                             storeHistory.add(0, newStore)
+                                        }
+                                    },
+                                    onUpdateStoreLocation = { store, loc ->
+                                        if (store.isNotBlank() && loc.isNotBlank()) {
+                                            val existing = storeLocationHistory[store] ?: emptyList()
+                                            storeLocationHistory[store] =
+                                                (listOf(loc) + existing.filter { it != loc }).take(10)
                                         }
                                     }
                                 )

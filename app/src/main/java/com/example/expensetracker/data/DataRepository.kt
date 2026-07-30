@@ -39,6 +39,7 @@ data class AppData(
     ),
     val subcategoryBudgets: Map<String, Double> = emptyMap(),
     val storeHistory: List<String> = emptyList(),
+    val storeLocationHistory: Map<String, List<String>> = emptyMap(),
     val isDarkTheme: Boolean = false,
     val recurringExpenses: List<RecurringExpense> = emptyList()
 )

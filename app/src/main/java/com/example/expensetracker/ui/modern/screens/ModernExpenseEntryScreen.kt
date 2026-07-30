@@ -63,6 +63,7 @@ fun ModernExpenseEntryScreen(
     paymentModes: List<String>,
     paidVia: List<String>,
     storeHistory: List<String> = emptyList(),
+    storeLocationHistory: Map<String, List<String>> = emptyMap(),
     expenseToEdit: Expense? = null,
     groupToEdit: List<Expense>? = null,
     initialSelectedExpenseId: String? = null,
@@ -74,6 +75,7 @@ fun ModernExpenseEntryScreen(
     onAddPaymentMode: (String) -> Unit = {},
     onAddPaidVia: (String) -> Unit = {},
     onUpdateStoreHistory: (String) -> Unit = {},
+    onUpdateStoreLocation: (String, String) -> Unit = { _, _ -> },
     initialDate: LocalDate? = null
 ) {
     val initialStoreName = remember { expenseToEdit?.storeName ?: groupToEdit?.firstOrNull()?.storeName ?: "" }
@@ -191,6 +193,27 @@ fun ModernExpenseEntryScreen(
         storeHistory.filter { it.isNotBlank() && it.contains(storeName, ignoreCase = true) }
             .distinct()
             .take(5)
+    }
+
+    // Location suggestions — bonded to the currently entered store
+    var showLocationSuggestions by remember { mutableStateOf(false) }
+    var storeNameTouched by remember { mutableStateOf(false) }
+    val matchedStoreLocations = remember(storeName, storeLocationHistory) {
+        storeLocationHistory.entries
+            .firstOrNull { it.key.equals(storeName, ignoreCase = true) }
+            ?.value ?: emptyList()
+    }
+    val filteredLocationSuggestions = remember(location, matchedStoreLocations) {
+        matchedStoreLocations.filter { it.contains(location, ignoreCase = true) }
+            .distinct()
+            .take(5)
+    }
+    // Auto-open the location dropdown once the typed/selected store matches known history
+    // (only in response to the user editing the store field, not on initial screen load)
+    LaunchedEffect(storeName, matchedStoreLocations) {
+        if (storeNameTouched && storeName.isNotBlank() && matchedStoreLocations.isNotEmpty()) {
+            showLocationSuggestions = true
+        }
     }
 
     val isEditing = expenseToEdit != null || (groupToEdit != null && groupToEdit.isNotEmpty())
@@ -493,6 +516,9 @@ fun ModernExpenseEntryScreen(
     fun performSave(isDraft: Boolean = false) {
         if (storeName.isNotBlank()) {
             onUpdateStoreHistory(storeName)
+        }
+        if (storeName.isNotBlank() && location.isNotBlank()) {
+            onUpdateStoreLocation(storeName, location)
         }
 
         fun expenseIdForIndex(index: Int): String {
@@ -919,6 +945,7 @@ fun ModernExpenseEntryScreen(
                 value = storeName,
                 onValueChange = {
                     storeName = it
+                    storeNameTouched = true
                     showStoreSuggestions = it.isNotBlank()
                 },
                 label = "Store",
@@ -951,6 +978,7 @@ fun ModernExpenseEntryScreen(
                                         .fillMaxWidth()
                                         .clickable {
                                             storeName = suggestion
+                                            storeNameTouched = true
                                             showStoreSuggestions = false
                                         }
                                         .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -963,18 +991,65 @@ fun ModernExpenseEntryScreen(
             }
         }
 
-        // Location
-        AuroraTextField(
-            value = location,
-            onValueChange = {
-                location = it
-                showStoreSuggestions = false
-            },
-            label = "Location",
+        // Location — bonded to store, with suggestions from prior entries at this store
+        var locationFieldSize by remember { mutableStateOf(IntSize.Zero) }
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(bottom = 10.dp)
-        )
+        ) {
+            AuroraTextField(
+                value = location,
+                onValueChange = {
+                    location = it
+                    showStoreSuggestions = false
+                    showLocationSuggestions = true
+                },
+                label = "Location",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged { locationFieldSize = it }
+                    .onFocusChanged { focusState ->
+                        if (focusState.isFocused) {
+                            if (matchedStoreLocations.isNotEmpty()) showLocationSuggestions = true
+                        } else {
+                            showLocationSuggestions = false
+                        }
+                    }
+            )
+
+            if (showLocationSuggestions && filteredLocationSuggestions.isNotEmpty()) {
+                val density = LocalDensity.current
+                Popup(
+                    alignment = Alignment.TopStart,
+                    offset = IntOffset(0, locationFieldSize.height + with(density) { 4.dp.roundToPx() }),
+                    onDismissRequest = { showLocationSuggestions = false }
+                ) {
+                    AuroraCard(
+                        modifier = Modifier
+                            .width(with(density) { locationFieldSize.width.toDp() })
+                            .shadow(8.dp, RoundedCornerShape(20.dp)),
+                        containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp)
+                    ) {
+                        Column {
+                            filteredLocationSuggestions.forEach { suggestion ->
+                                Text(
+                                    text = suggestion,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            location = suggestion
+                                            showLocationSuggestions = false
+                                        }
+                                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         if (!isSplit) {
             AuroraTextField(

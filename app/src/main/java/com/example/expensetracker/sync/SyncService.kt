@@ -189,6 +189,7 @@ class SyncService(private val context: Context) {
                             paymentModes = mergeDataLists(localData.paymentModes, remoteData.paymentModes),
                             paidVia = mergeDataLists(localData.paidVia, remoteData.paidVia),
                             storeHistory = mergeDataLists(localData.storeHistory, remoteData.storeHistory),
+                            storeLocationHistory = mergeStoreLocationHistory(localData.storeLocationHistory, remoteData.storeLocationHistory),
                             categoryBudgets = mergeBudgets(localData.categoryBudgets, remoteData.categoryBudgets),
                             subcategoryBudgets = mergeBudgets(localData.subcategoryBudgets, remoteData.subcategoryBudgets),
                             isDarkTheme = remoteData.isDarkTheme // Keep remote theme preference
@@ -328,6 +329,22 @@ class SyncService(private val context: Context) {
         return merged
     }
     
+    private fun mergeStoreLocationHistory(
+        local: Map<String, List<String>>,
+        remote: Map<String, List<String>>
+    ): Map<String, List<String>> {
+        val merged = mutableMapOf<String, List<String>>()
+        val allStores = (local.keys + remote.keys).distinct()
+
+        allStores.forEach { store ->
+            val localLocations = local[store] ?: emptyList()
+            val remoteLocations = remote[store] ?: emptyList()
+            merged[store] = (localLocations + remoteLocations).distinct().take(10)
+        }
+
+        return merged
+    }
+
     private fun mergeSubcategoriesMap(
         local: Map<String, List<String>>,
         remote: Map<String, List<String>>

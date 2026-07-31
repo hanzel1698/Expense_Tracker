@@ -1051,6 +1051,49 @@ fun ModernExpenseEntryScreen(
             }
         }
 
+        // Split toggle
+        AuroraCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 10.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Split transaction", style = MaterialTheme.typography.titleSmall)
+                Switch(
+                    checked = isSplit,
+                    onCheckedChange = {
+                        isSplit = it
+                        if (it && subTransactions.size == 1) {
+                            subTransactions = listOf(
+                                subTransactions[0].copy(
+                                    category = mainCategory,
+                                    subcategory = mainSubcategory,
+                                    amount = totalAmount,
+                                    description = description,
+                                    labels = selectedLabels.toList(),
+                                    quantity = quantity,
+                                    unit = unit,
+                                    notes = notes,
+                                    baseAmount = baseAmount,
+                                    gstPercentage = gstPercentage,
+                                    gstAmount = gstAmount
+                                )
+                            )
+                        }
+                        if (it) {
+                            expandedSplitId = subTransactions.firstOrNull()?.id
+                        }
+                    }
+                )
+            }
+        }
+
         if (!isSplit) {
             AuroraTextField(
                 value = description,
@@ -1277,49 +1320,6 @@ fun ModernExpenseEntryScreen(
                     .fillMaxWidth()
                     .padding(bottom = 10.dp)
             )
-        }
-
-        // Split toggle
-        AuroraCard(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 10.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text("Split transaction", style = MaterialTheme.typography.titleSmall)
-                Switch(
-                    checked = isSplit,
-                    onCheckedChange = {
-                        isSplit = it
-                        if (it && subTransactions.size == 1) {
-                            subTransactions = listOf(
-                                subTransactions[0].copy(
-                                    category = mainCategory,
-                                    subcategory = mainSubcategory,
-                                    amount = totalAmount,
-                                    description = description,
-                                    labels = selectedLabels.toList(),
-                                    quantity = quantity,
-                                    unit = unit,
-                                    notes = notes,
-                                    baseAmount = baseAmount,
-                                    gstPercentage = gstPercentage,
-                                    gstAmount = gstAmount
-                                )
-                            )
-                        }
-                        if (it) {
-                            expandedSplitId = subTransactions.firstOrNull()?.id
-                        }
-                    }
-                )
-            }
         }
 
         if (isSplit) {

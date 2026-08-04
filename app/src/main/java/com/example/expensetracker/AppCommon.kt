@@ -8,7 +8,7 @@ import java.time.format.DateTimeFormatter
 // helpers used across the Aurora UI and the data pipeline.
 
 enum class Screen {
-    Dashboard, ExpenseList, Budget, Settings, AddExpense, DraftList
+    SignInGate, Dashboard, ExpenseList, Budget, Settings, AddExpense, DraftList
 }
 
 enum class TrendDimension {

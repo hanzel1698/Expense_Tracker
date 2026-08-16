@@ -46,6 +46,12 @@ fun resolveUploadSigning(): UploadSigningConfig? {
 
 val uploadSigning = resolveUploadSigning()
 
+// CI overrides the version code so every distributed build is a distinct
+// release: Firebase App Distribution can tell builds apart, installs upgrade
+// cleanly, and the in-app What's New screen re-triggers. Local builds leave
+// CI_VERSION_CODE unset and use the committed values below.
+val ciVersionCode = System.getenv("CI_VERSION_CODE")?.toIntOrNull()?.takeIf { it > 0 }
+
 android {
     namespace = "com.example.expensetracker"
     compileSdk {
@@ -58,6 +64,10 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
+        ciVersionCode?.let { build ->
+            versionCode = build
+            versionName = versionName!!.substringBefore('.') + "." + build
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

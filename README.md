@@ -56,14 +56,65 @@ On Windows, use `gradlew.bat` instead of `./gradlew`.
 
 ## Publish / release
 
+### Automated: build → GitHub Release → phone
+
+`.github/workflows/android-release.yml` is the one-click path from a commit to
+the app on a device. Trigger it manually from **Actions → Android Release Build
+→ Run workflow** (optionally naming the run), and it will:
+
+1. Stamp the build with `CI_VERSION_CODE = <run number>`, so `versionCode` is
+   the run number and `versionName` is `1.<run number>` — every build is a
+   distinct, increasing version.
+2. Regenerate `app/src/main/assets/release_notes.json` from the commits since
+   the last `v*` tag, so the in-app **What's New** screen shows this build's
+   changes.
+3. Build the release APK (signed with the checked-in `debug.keystore`, see
+   [Signing](#signing-debugci-builds) — the fingerprint never changes, so each
+   build installs over the previous one).
+4. Upload the APK to **Firebase App Distribution**, which notifies the testers
+   in the Firebase App Tester app on their device.
+5. Publish a **GitHub Release** tagged `v1.<run number>` with the APK attached.
+
+Steps 1–3 and 5 need no configuration. Step 4 is skipped with a warning until
+these are set under **Settings → Secrets and variables → Actions**:
+
+| Name | Kind | Value |
+| --- | --- | --- |
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | Secret | Contents of a Google Cloud service-account JSON key with the **Firebase App Distribution Admin** role |
+| `FIREBASE_APP_ID` | Variable | The Firebase Android App ID, e.g. `1:123456789012:android:abcdef…` |
+| `FIREBASE_TESTERS` | Variable *(optional)* | Comma-separated tester emails (defaults to `hanzel.h.fernandez@gmail.com`) |
+
+To get those values:
+
+1. In the [Firebase console](https://console.firebase.google.com), open (or
+   create) a project and **Add app → Android** with package name
+   `com.example.expensetracker`. No `google-services.json` or SDK is needed —
+   App Distribution uploads the APK server-side.
+2. Copy the **App ID** from **Project settings → General → Your apps** into the
+   `FIREBASE_APP_ID` variable.
+3. **Project settings → Service accounts → Manage service account permissions**
+   (Google Cloud IAM) → create a service account, grant it **Firebase App
+   Distribution Admin**, then create a JSON key and paste the whole file into
+   the `FIREBASE_SERVICE_ACCOUNT_JSON` secret.
+4. In **App Distribution → Testers & Groups**, add the tester emails, and
+   install the **Firebase App Tester** app on the device from the invite email.
+
+`pr-build.yml` stays the lightweight check — manual, debug + release APKs as
+build artifacts, no release, no distribution.
+
+### Local
+
 Use the repo-relative build script:
 ```powershell
 .\tools\build-release.ps1
 ```
 
-This produces a release APK under `dist/`. GitHub Releases attach the built APK automatically via CI or `gh release create`.
+This produces a release APK under `dist/`.
 
-For production signing, configure a release keystore in `app/build.gradle.kts` and store credentials outside the repo.
+For production signing, set the `KEYSTORE_FILE` / `KEYSTORE_PASSWORD` /
+`KEY_ALIAS` / `KEY_PASSWORD` environment variables (or drop an
+`upload-keystore.jks` in `~/.android/signing/`) — `app/build.gradle.kts` picks
+that up automatically and signs the release with it instead of the debug key.
 
 ## Project structure
 

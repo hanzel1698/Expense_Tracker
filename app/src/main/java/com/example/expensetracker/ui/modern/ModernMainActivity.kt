@@ -47,9 +47,13 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.tasks.Task
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Sole entry point for the app — the Aurora (Material 3) UI. Owns navigation,
@@ -97,6 +101,15 @@ class ModernMainActivity : ComponentActivity() {
 
         syncService = SyncService(applicationContext)
 
+        // A previously-signed-in account is cached locally (no network call). Re-attach it to
+        // the Drive service so isSignedIn() reports correctly on a cold start and the sign-in
+        // gate can be skipped, not just after an interactive sign-in this session.
+        val lastAccount = GoogleSignIn.getLastSignedInAccount(applicationContext)
+        val startSignedIn = lastAccount != null
+        if (lastAccount != null) {
+            syncService.initializeDriveService(lastAccount)
+        }
+
         setContent {
             val context = applicationContext
             val initialData = remember { DataRepository.load(context) }
@@ -105,7 +118,9 @@ class ModernMainActivity : ComponentActivity() {
             AuroraTheme(darkTheme = isDarkTheme) {
                 WhatsNewGate {
                     val globalExpenses = remember { mutableStateListOf(*initialData.expenses.toTypedArray()) }
-                    var currentScreen by remember { mutableStateOf(Screen.Dashboard) }
+                    var currentScreen by remember {
+                        mutableStateOf(if (startSignedIn) Screen.Dashboard else Screen.SignInGate)
+                    }
 
                     var viewingDateFilter by remember { mutableStateOf<LocalDate?>(null) }
                     var viewingStartDateFilter by remember { mutableStateOf<LocalDate?>(null) }
@@ -359,11 +374,62 @@ class ModernMainActivity : ComponentActivity() {
                     }
 
                     // ── Sync state ─────────────────────────────────────────────────
-                    var isSignedIn by remember { mutableStateOf(false) }
+                    var isSignedIn by remember { mutableStateOf(startSignedIn) }
                     var isSyncing by remember { mutableStateOf(false) }
                     var showSyncMessage by remember { mutableStateOf("") }
                     var showSyncError by remember { mutableStateOf(false) }
                     val coroutineScope = rememberCoroutineScope()
+                    val launchSignIn: () -> Unit = {
+                        val signInIntent = syncService.getGoogleSignInClient().signInIntent
+                        signInLauncher.launch(signInIntent)
+                    }
+
+                    // ── Auto-sync to Google Drive ────────────────────────────────────
+                    // Reuses the same state snapshot as auto-save above, but debounced by a
+                    // few seconds so a burst of edits (typing, CSV import, recurring-expense
+                    // generation) results in one upload, not one per change. Silent on
+                    // failure/offline/signed-out — never blocks local save or surfaces an
+                    // error; the manual Upload button in Settings remains as a fallback.
+                    val autoSyncInFlight = remember { AtomicBoolean(false) }
+                    LaunchedEffect(Unit) {
+                        snapshotFlow {
+                            AppData(
+                                expenses = globalExpenses.toList(),
+                                categories = categories.toList(),
+                                subcategoriesMap = subcategoriesMap.mapValues { it.value.toList() },
+                                labels = labels.toList(),
+                                paymentModes = paymentModes.toList(),
+                                paidVia = paidVia.toList(),
+                                categoryBudgets = categoryBudgets.toMap(),
+                                subcategoryBudgets = subcategoryBudgets.toMap(),
+                                storeHistory = storeHistory.toList(),
+                                storeLocationHistory = storeLocationHistory.toMap(),
+                                isDarkTheme = isDarkTheme,
+                                recurringExpenses = recurringExpenses.toList()
+                            )
+                        }
+                            .drop(1) // skip the baseline emission on first collection
+                            .debounce(3000)
+                            .collect {
+                                if (!isSignedIn) return@collect
+                                if (!autoSyncInFlight.compareAndSet(false, true)) return@collect
+                                coroutineScope.launch(Dispatchers.IO) {
+                                    try {
+                                        syncService.uploadToDrive().onFailure { e ->
+                                            Log.w("ModernMainActivity", "Auto-sync upload failed: ${e.message}")
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.w("ModernMainActivity", "Auto-sync upload threw", e)
+                                    } finally {
+                                        autoSyncInFlight.set(false)
+                                    }
+                                }
+                            }
+                    }
+
+                    val deleteExpense: (Expense) -> Unit = { expense ->
+                        globalExpenses.removeAll { it.id == expense.id }
+                    }
 
                     fun applyRecurringEngineResult(
                         newExpenses: List<Expense>,
@@ -404,6 +470,14 @@ class ModernMainActivity : ComponentActivity() {
                     LaunchedEffect(signInRefreshTrigger) {
                         if (signInRefreshTrigger > 0) {
                             isSignedIn = syncService.isSignedIn()
+                        }
+                    }
+
+                    // Once signed in, move off the sign-in gate automatically (e.g. after
+                    // completing Google OAuth from the gate screen).
+                    LaunchedEffect(isSignedIn) {
+                        if (isSignedIn && currentScreen == Screen.SignInGate) {
+                            currentScreen = Screen.Dashboard
                         }
                     }
 
@@ -495,6 +569,7 @@ class ModernMainActivity : ComponentActivity() {
                         modifier = Modifier.fillMaxSize(),
                         containerColor = MaterialTheme.colorScheme.background,
                         bottomBar = {
+                            if (currentScreen != Screen.SignInGate) {
                             ModernBottomBar(
                                 currentScreen = currentScreen,
                                 onScreenSelected = {
@@ -516,11 +591,12 @@ class ModernMainActivity : ComponentActivity() {
                                     }
                                 }
                             )
+                            }
                         }
                     ) { innerPadding ->
                         BackHandler(enabled = true) {
                             when (currentScreen) {
-                                Screen.Dashboard -> {
+                                Screen.SignInGate, Screen.Dashboard -> {
                                     showExitConfirmationDialog = true
                                 }
                                 Screen.ExpenseList -> {
@@ -563,6 +639,10 @@ class ModernMainActivity : ComponentActivity() {
 
                         Box(modifier = Modifier.padding(innerPadding)) {
                             when (currentScreen) {
+                                Screen.SignInGate -> ModernSignInGateScreen(
+                                    onSignIn = launchSignIn,
+                                    onContinueWithoutSigningIn = { currentScreen = Screen.Dashboard }
+                                )
                                 Screen.Dashboard -> ModernDashboardScreen(
                                     expenses = globalExpenses,
                                     budget = overallBudget,
@@ -660,9 +740,7 @@ class ModernMainActivity : ComponentActivity() {
                                             }
                                             currentScreen = Screen.AddExpense
                                         },
-                                        onDeleteExpense = { expense ->
-                                            globalExpenses.removeAll { it.id == expense.id }
-                                        }
+                                        onDeleteExpense = deleteExpense
                                     )
                                 }
                                 Screen.DraftList -> ModernExpenseListScreen(
@@ -705,9 +783,7 @@ class ModernMainActivity : ComponentActivity() {
                                         }
                                         currentScreen = Screen.AddExpense
                                     },
-                                    onDeleteExpense = { expense ->
-                                        globalExpenses.removeAll { it.id == expense.id }
-                                    }
+                                    onDeleteExpense = deleteExpense
                                 )
                                 Screen.Settings -> ModernSettingsScreen(
                                     categories = categories,
@@ -798,10 +874,7 @@ class ModernMainActivity : ComponentActivity() {
                                             recurringExpenses.removeAt(index)
                                         }
                                     },
-                                    onSignIn = {
-                                        val signInIntent = syncService.getGoogleSignInClient().signInIntent
-                                        signInLauncher.launch(signInIntent)
-                                    },
+                                    onSignIn = launchSignIn,
                                     onSignOut = {
                                         coroutineScope.launch {
                                             syncService.signOut()

@@ -73,7 +73,7 @@ fun parseFlexibleDate(dateStr: String): LocalDate {
 val CSV_TEMPLATE_CONTENT = """
 Date (YYYY-MM-DD),Store Name,Amount,Category,Subcategory,Item Description,Labels (comma-separated),Quantity,Unit,Notes,Payment Mode,Paid Via,Split ID,Is Recurring (Yes/No),Recurring Frequency (Daily/Weekly/Monthly/Yearly),Recurring End Date (YYYY-MM-DD)
 2026-06-01,Groceries - Target,45.50,Food,Groceries,Weekly grocery shopping,"Personal, Urgent",1,Bag,Weekly milk and eggs,Credit Card,Google Pay,,No,,
-2026-06-02,Costco,100.00,Food,Groceries,Food supplies,Personal,,,,,Credit Card,Google Pay,SplitA,No,,
-2026-06-02,Costco,50.00,Shopping,Clothing,New shirt,Personal,,,,,Credit Card,Google Pay,SplitA,No,,
-2026-06-03,Gym Membership,30.00,Health,Gym,Monthly Gym fee,Personal,,,,,Net Banking,Other,,Yes,Weekly,2026-12-31
+2026-06-02,Costco,100.00,Food,Groceries,Food supplies,Personal,,,,Credit Card,Google Pay,SplitA,No,,
+2026-06-02,Costco,50.00,Shopping,Clothing,New shirt,Personal,,,,Credit Card,Google Pay,SplitA,No,,
+2026-06-03,Gym Membership,30.00,Health,Gym,Monthly Gym fee,Personal,,,,Net Banking,Other,,Yes,Weekly,2026-12-31
 """.trimIndent()

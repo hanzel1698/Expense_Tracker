@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Expense Tracker">
+  <!-- Maskable variant: artwork kept inside the 80% safe zone, full-bleed background. -->
+  <rect width="512" height="512" fill="#006A60"/>
+  <g transform="translate(256 256) scale(0.62) translate(-256 -256)">
+    <path d="M136 116h192a24 24 0 0 1 24 24v256l-40-26-40 26-40-26-40 26-40-26-40 26V140a24 24 0 0 1 24-24z" fill="#9CF2E2"/>
+    <path d="M186 176h92m-92 40h92m-30 0c0 30-24 46-62 46l70 74" fill="none" stroke="#00201C" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

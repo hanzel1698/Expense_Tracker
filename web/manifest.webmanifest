@@ -1,0 +1,15 @@
+{
+  "name": "Expense Tracker",
+  "short_name": "Expenses",
+  "description": "Track daily spending, manage budgets by category, set recurring expenses, and back up to Google Drive.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F5FBF8",
+  "theme_color": "#006A60",
+  "icons": [
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icons/icon-maskable.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

@@ -1,0 +1,53 @@
+# Netlify deployment for the Expense Tracker web app.
+# The web app is plain ES modules + CSS — no build step, no dependencies.
+# Netlify serves `web/` as the site root.
+
+[build]
+  publish = "web"
+  command = ""
+
+[build.environment]
+  # Nothing to install; skip Netlify's dependency detection entirely.
+  NETLIFY_USE_YARN = "false"
+
+# The app is a single page with in-memory routing, so any unknown path
+# resolves back to index.html.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# index.html and the service worker must always be revalidated so a new deploy
+# is picked up immediately; hashed-free static assets are revalidated too, since
+# the service worker is what actually serves repeat visits.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/config.js"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/js/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/css/*"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "SAMEORIGIN"

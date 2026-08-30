@@ -1,8 +1,14 @@
 # Expense Tracker
 
-An Android expense tracker built with Kotlin and Jetpack Compose. Track daily spending, manage budgets by category, set recurring expenses, and back up data to Google Drive.
+An expense tracker for **Android** (Kotlin + Jetpack Compose) and the **web**
+(static PWA, deployed to Netlify). Track daily spending, manage budgets by
+category, set recurring expenses, and back up data to Google Drive.
 
 The UI is **Aurora** — a Material 3 design with a teal/emerald palette, rounded tonal cards, and full light/dark theming (`ui/modern/`). `ModernMainActivity` is the app's launcher activity.
+
+The web app in [`web/`](web/) is a port of that same UI and feature set, with no
+build step and no dependencies. Both apps read and write the same JSON, so a
+backup from one restores into the other — see [`web/README.md`](web/README.md).
 
 ## Features
 
@@ -14,7 +20,23 @@ The UI is **Aurora** — a Material 3 design with a teal/emerald palette, rounde
 - **Google Drive sync** — backup and restore expense data to a Drive app folder
 - **Aurora UI** — Material 3 design with light and dark themes
 
-## Requirements
+## Web app
+
+The same app runs in the browser from [`web/`](web/) — plain ES modules and CSS,
+no build step:
+
+```bash
+cd web && python3 -m http.server 8000   # then open http://localhost:8000
+```
+
+Deployment is via **Netlify**; `netlify.toml` at the repo root already sets
+`publish = "web"` with an empty build command, so importing the repository in
+Netlify (or running `npx netlify-cli deploy --prod`) needs no further setup.
+
+Setup details, Drive sync configuration and the Android ↔ web data-compatibility
+notes are in [`web/README.md`](web/README.md).
+
+## Requirements (Android app)
 
 - **Android Studio** Ladybug (2024.2+) or newer with Android SDK 36
 - **JDK 11+**
@@ -131,6 +153,11 @@ ExpenseTracker2/
 │           ├── components/       # Cards, fields, dropdowns, calendar, charts
 │           ├── screens/          # Dashboard, ExpenseList, Budget, Settings, ExpenseEntry
 │           └── theme/            # AuroraTheme (colors, typography, shapes)
+├── web/                          # Web app (static PWA, Netlify)
+│   ├── index.html                # App shell
+│   ├── css/aurora.css            # Aurora palette, type scale, components
+│   └── js/                       # Ports of the Kotlin modules above
+├── netlify.toml                  # Netlify config (publish = web, no build)
 ├── gradle/                       # Version catalog (libs.versions.toml)
 ├── tools/                        # build-release.ps1
 └── .github/workflows/            # CI build workflow

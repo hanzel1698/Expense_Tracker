@@ -15,6 +15,30 @@ Then open <http://localhost:8000>. Any static server works (`npx serve`,
 `php -S`, …) — the app must be served over HTTP rather than opened as a
 `file://` URL, because it uses ES modules.
 
+## Deploy to GitHub Pages
+
+`.github/workflows/pages.yml` publishes `web/` on every push to `master`, and
+can also be run by hand from the Actions tab. One-time setup:
+
+1. **Settings → Pages → Build and deployment → Source** = **GitHub Actions**.
+2. Push to `master` (or run the workflow manually) and the site goes live at
+   `https://<owner>.github.io/<repo>/`.
+3. Add that URL to **Authorised JavaScript origins** on the OAuth client, or
+   Drive sign-in fails with an origin error. The origin is the scheme + host
+   only — `https://<owner>.github.io`, with no repo path.
+
+Free on public repositories. Two things differ from Netlify, neither of which
+this app needs: Pages serves from a **subpath**, which is fine because every
+asset path, the manifest's `start_url`/`scope` and the service-worker
+registration are relative; and it has no redirect rules, which costs nothing
+because navigation uses `pushState` without a URL, so the path never changes
+and there are no deep links to rewrite. Pages also ignores `netlify.toml`'s
+cache headers, but the service worker is network-first, so a deploy is still
+picked up on the next load.
+
+Because `localStorage` is per-origin, a new host starts with no local data.
+Sign in to Drive there and the startup pull fills it from the newest backup.
+
 ## Deploy to Netlify
 
 `netlify.toml` in the repo root already points Netlify at this directory:

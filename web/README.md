@@ -91,6 +91,11 @@ application** OAuth client ID:
      `localStorage` only, so it has to be re-entered on every new browser and
      any time site data is cleared.
 
+   A shipped ID takes precedence over a stored one, and Settings then shows it
+   as read-only rather than offering a field that would be ignored. That way a
+   browser which pasted an ID back when `config.js` was empty can't go on
+   shadowing the deploy's with a stale value.
+
 Everything except Drive sync works with no client ID configured.
 
 The client ID is **not a secret**. The browser sends it in the clear to Google on

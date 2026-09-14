@@ -23,10 +23,25 @@ const ROLLING_BACKUP_NAME = 'expense_data_latest.json';
 
 // ── Client ID configuration ──────────────────────────────────────────────────
 
-export function getClientId() {
-  const stored = readPrefs().googleClientId;
-  if (stored) return stored;
+/** The client ID shipped with the deploy in config.js, if any. */
+function shippedClientId() {
   return (window.EXPENSE_TRACKER_CONFIG && window.EXPENSE_TRACKER_CONFIG.googleClientId) || '';
+}
+
+/** True when config.js supplies the ID, making the Settings field moot. */
+export function isClientIdShipped() {
+  return !!shippedClientId();
+}
+
+/**
+ * The deploy's ID wins over a browser-stored one. The precedence matters: any
+ * browser that pasted an ID into Settings before config.js was populated still
+ * has it in localStorage, and reading that first would let a stale value shadow
+ * the shipped one indefinitely. Settings is only a fallback for a deploy that
+ * ships no ID.
+ */
+export function getClientId() {
+  return shippedClientId() || readPrefs().googleClientId || '';
 }
 
 export function setClientId(id) {

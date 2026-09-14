@@ -15,7 +15,7 @@ import {
   today, fmtSlash, fmtSlashShort, fmt2, monthNameShort, monthValue,
   toDoubleOrNull, toIntOrNull, WEEKDAY_NAMES, WEEKDAY_ABBR, uuid,
 } from '../util.js';
-import { isDriveConfigured, getClientId, setClientId } from '../sync.js';
+import { isDriveConfigured, getClientId, setClientId, isClientIdShipped } from '../sync.js';
 
 const state = {
   selectedCategory: null,
@@ -241,22 +241,31 @@ function renderSyncCard(ctx) {
   body.appendChild(h('div', { style: { height: '12px' } }));
   body.appendChild(h('div.title-small', {}, 'Google OAuth client ID'));
   body.appendChild(h('div', { style: { height: '4px' } }));
-  body.appendChild(h('div.label-small.muted', {},
-    'Drive sync needs a Web OAuth client ID from Google Cloud Console with this site listed as an authorised JavaScript origin. Stored only in this browser.'));
-  body.appendChild(h('div', { style: { height: '8px' } }));
-  body.appendChild(h('button.btn.outlined.full', {
-    type: 'button',
-    onclick: () => editDialog({
-      title: 'Google OAuth client ID',
-      fieldLabel: 'Client ID',
-      initialValue: getClientId(),
-      onConfirm: (value) => {
-        setClientId(value);
-        ctx.showMessage(value.trim() ? 'Client ID saved' : 'Client ID cleared');
-        ctx.rerender();
-      },
-    }),
-  }, configured ? 'Change client ID…' : 'Set client ID…'));
+
+  if (isClientIdShipped()) {
+    // config.js supplies the ID, so there is nothing to enter and an editable
+    // field here would be misleading — anything typed would be ignored.
+    body.appendChild(h('div.label-small.muted', {},
+      'Supplied by this deployment, so there is nothing to set up. Change it in ' +
+      'web/config.js and redeploy.'));
+  } else {
+    body.appendChild(h('div.label-small.muted', {},
+      'Drive sync needs a Web OAuth client ID from Google Cloud Console with this site listed as an authorised JavaScript origin. Stored only in this browser, so it is lost if site data is cleared.'));
+    body.appendChild(h('div', { style: { height: '8px' } }));
+    body.appendChild(h('button.btn.outlined.full', {
+      type: 'button',
+      onclick: () => editDialog({
+        title: 'Google OAuth client ID',
+        fieldLabel: 'Client ID',
+        initialValue: getClientId(),
+        onConfirm: (value) => {
+          setClientId(value);
+          ctx.showMessage(value.trim() ? 'Client ID saved' : 'Client ID cleared');
+          ctx.rerender();
+        },
+      }),
+    }, configured ? 'Change client ID…' : 'Set client ID…'));
+  }
 
   // Backup file restore / download — works with no sign-in at all.
   body.appendChild(h('div', { style: { height: '12px' } }));

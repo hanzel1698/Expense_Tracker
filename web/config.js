@@ -16,5 +16,5 @@
 // list tight and treat it as the real control.
 
 window.EXPENSE_TRACKER_CONFIG = {
-  googleClientId: '',
+  googleClientId: '706672465967-ggkif2qva4a2r31gbr1elk1aoudc654s.apps.googleusercontent.com',
 };

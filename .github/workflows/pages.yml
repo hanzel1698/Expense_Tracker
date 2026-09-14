@@ -5,8 +5,8 @@ name: Deploy web app (GitHub Pages)
 # this just uploads the directory as-is, the same thing `netlify.toml`'s
 # `publish = "web"` does.
 #
-# One-time setup: Settings → Pages → Build and deployment → Source =
-# "GitHub Actions". The site is then served at
+# No setup needed: configure-pages runs with `enablement: true`, so the first
+# run turns Pages on itself. The site is served at
 # https://<owner>.github.io/<repo>/ — a subpath, which the app handles because
 # every asset path, the manifest's start_url/scope and the service-worker
 # registration are all relative.
@@ -39,7 +39,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `enablement: true` turns Pages on via the API if it isn't already, so
+      # the repo needs no manual Settings → Pages step before the first deploy.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload web/ as the Pages artifact
         uses: actions/upload-pages-artifact@v3

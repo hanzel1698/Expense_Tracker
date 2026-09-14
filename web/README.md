@@ -20,13 +20,17 @@ Then open <http://localhost:8000>. Any static server works (`npx serve`,
 `.github/workflows/pages.yml` publishes `web/` on every push to `master`, and
 can also be run by hand from the Actions tab.
 
-There is no Settings step: `configure-pages` runs with `enablement: true`, so
-the first run switches Pages on itself and the site goes live at
-`https://<owner>.github.io/<repo>/`.
+Two one-time steps, both outside the repo:
 
-The one thing to do by hand is add that origin to **Authorised JavaScript
-origins** on the OAuth client, or Drive sign-in fails with an origin error. Use
-scheme + host only — `https://<owner>.github.io`, with no repo path.
+1. **Settings → Pages → Build and deployment → Source** = **GitHub Actions**,
+   then re-run the workflow. The site goes live at
+   `https://<owner>.github.io/<repo>/`. The workflow can't do this itself:
+   `GITHUB_TOKEN`'s `pages:write` scope covers deploying to Pages but not
+   creating the site, so `configure-pages`' `enablement: true` fails with
+   *Resource not accessible by integration*.
+2. Add that origin to **Authorised JavaScript origins** on the OAuth client, or
+   Drive sign-in fails with an origin error. Use scheme + host only —
+   `https://<owner>.github.io`, with no repo path.
 
 Free on public repositories. Two things differ from Netlify, neither of which
 this app needs: Pages serves from a **subpath**, which is fine because every

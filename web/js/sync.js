@@ -15,6 +15,12 @@ const APP_FOLDER = 'ExpenseTracker_Backups';
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
 const GIS_SRC = 'https://accounts.google.com/gsi/client';
 
+// Auto-sync overwrites this single rolling file instead of adding a timestamped
+// one per edit burst, which used to grow the folder without bound. The name
+// still starts with `expense_data_` so listBackups() picks it up, and because
+// it is the most recently modified file it sorts first for the restore path.
+const ROLLING_BACKUP_NAME = 'expense_data_latest.json';
+
 // ── Client ID configuration ──────────────────────────────────────────────────
 
 export function getClientId() {
@@ -155,11 +161,48 @@ export function backupFileName() {
   return `expense_data_${backupTimestamp()}.json`;
 }
 
-export async function uploadToDrive() {
-  const folder = await getOrCreateAppFolder();
-  const fileName = backupFileName();
-  const metadata = { name: fileName, parents: [folder.id], mimeType: 'application/json' };
+/** Finds a file by exact name inside the app folder, or null. */
+async function findInFolder(folderId, name) {
+  const query = encodeURIComponent(`name='${name}' and '${folderId}' in parents and trashed=false`);
+  const res = await driveFetch(
+    `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)`,
+  );
+  const json = await res.json();
+  return json.files && json.files.length > 0 ? json.files[0] : null;
+}
 
+/**
+ * Uploads the current dataset to Drive.
+ *
+ * `rolling: true` (auto-sync) overwrites ROLLING_BACKUP_NAME in place, so
+ * repeated syncs keep one file rather than accumulating one per edit burst.
+ * `rolling: false` (the manual Upload button) writes a timestamped snapshot,
+ * since an explicit upload is usually meant as a point-in-time restore point.
+ */
+export async function uploadToDrive({ rolling = false } = {}) {
+  const folder = await getOrCreateAppFolder();
+  const fileName = rolling ? ROLLING_BACKUP_NAME : backupFileName();
+  const existing = rolling ? await findInFolder(folder.id, fileName) : null;
+
+  if (existing) {
+    const res = await driveFetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${existing.id}` +
+        '?uploadType=media&fields=id,name,size,modifiedTime',
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: serialize(),
+      },
+    );
+    const file = await res.json();
+    return {
+      fileId: file.id,
+      fileName: file.name || fileName,
+      message: `Successfully updated backup: ${file.name || fileName}`,
+    };
+  }
+
+  const metadata = { name: fileName, parents: [folder.id], mimeType: 'application/json' };
   const boundary = `-------expense${Date.now()}`;
   const body =
     `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n` +
@@ -248,10 +291,15 @@ function mergeMapOfLists(local, remote, cap) {
 
 /**
  * MERGE_BY_DATE: remote is the source of truth for which expenses exist; when
- * both sides have an id, the newer date wins. Expenses missing from remote were
- * deleted on the other device and are dropped.
+ * both sides have an id, the newer date wins.
+ *
+ * With `dropMissing: true` (an explicit, user-initiated restore) expenses absent
+ * from remote are treated as deleted elsewhere and dropped. With `false` — used
+ * by the silent pull on startup — they are kept instead: a background merge must
+ * never destroy local-only expenses, e.g. ones entered while offline whose
+ * upload never landed. Deletions then propagate only via an explicit restore.
  */
-function mergeExpenses(local, remote) {
+function mergeExpenses(local, remote, { dropMissing = true } = {}) {
   const localById = new Map(local.expenses.map((e) => [e.id, e]));
   const remoteIds = new Set(remote.expenses.map((e) => e.id));
 
@@ -259,6 +307,7 @@ function mergeExpenses(local, remote) {
   let expensesAdded = 0;
   let expensesUpdated = 0;
   let expensesRemoved = 0;
+  let expensesKept = 0;
   let conflictsResolved = 0;
 
   for (const remoteExpense of remote.expenses) {
@@ -276,17 +325,35 @@ function mergeExpenses(local, remote) {
   }
 
   for (const localExpense of local.expenses) {
-    if (!remoteIds.has(localExpense.id)) expensesRemoved++;
+    if (remoteIds.has(localExpense.id)) continue;
+    if (dropMissing) {
+      expensesRemoved++;
+    } else {
+      mergedExpenses.push(localExpense);
+      expensesKept++;
+    }
   }
 
-  return { mergedExpenses, expensesAdded, expensesUpdated, expensesRemoved, conflictsResolved };
+  return {
+    mergedExpenses,
+    expensesAdded,
+    expensesUpdated,
+    expensesRemoved,
+    expensesKept,
+    conflictsResolved,
+  };
 }
 
 /**
  * Validates a backup payload and merges it into the local data set.
- * @returns {{ success: boolean, message: string, expensesAdded: number, expensesRemoved: number }}
+ *
+ * @param {string} jsonText Backup JSON.
+ * @param {{ dropMissing?: boolean }} [options] `dropMissing: false` keeps
+ *   local-only expenses — see mergeExpenses.
+ * @returns {{ success: boolean, message: string, expensesAdded: number,
+ *   expensesUpdated: number, expensesRemoved: number, expensesKept: number }}
  */
-export function validateAndMerge(jsonText) {
+export function validateAndMerge(jsonText, { dropMissing = true } = {}) {
   let remote;
   try {
     remote = parseAppData(JSON.parse(jsonText));
@@ -297,7 +364,7 @@ export function validateAndMerge(jsonText) {
   const validation = validateDataIntegrity(remote);
   if (!validation.valid) return { success: false, message: validation.message };
 
-  const result = mergeExpenses(localData, remote);
+  const result = mergeExpenses(localData, remote, { dropMissing });
 
   replaceAll({
     expenses: result.mergedExpenses,
@@ -320,7 +387,19 @@ export function validateAndMerge(jsonText) {
     expensesAdded: result.expensesAdded,
     expensesUpdated: result.expensesUpdated,
     expensesRemoved: result.expensesRemoved,
+    expensesKept: result.expensesKept,
   };
+}
+
+/**
+ * Startup pull: merges the newest Drive backup into local data without dropping
+ * anything. Returns null when there is nothing to pull.
+ */
+export async function pullLatestBackup() {
+  const backups = await listBackups();
+  if (backups.length === 0) return null;
+  const jsonText = await downloadBackup(backups[0].fileId);
+  return validateAndMerge(jsonText, { dropMissing: false });
 }
 
 function mergeById(local, remote) {

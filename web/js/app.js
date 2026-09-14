@@ -188,6 +188,9 @@ async function signIn() {
     showMessage('Signed in to Google Drive');
     if (app.currentScreen === Screen.SignInGate) navigate(Screen.Dashboard);
     else render();
+    // Signing in on a fresh browser starts from empty local data — pull the
+    // newest backup straight away rather than waiting for a manual restore.
+    await autoPull();
   } catch (err) {
     setBusy(false);
     showMessage(`Google sign-in failed: ${err.message}`, true);
@@ -273,13 +276,36 @@ const autoSync = debounce(async () => {
   if (!sync.isSignedIn() || autoSyncInFlight) return;
   autoSyncInFlight = true;
   try {
-    await sync.uploadToDrive();
+    await sync.uploadToDrive({ rolling: true });
   } catch (err) {
     console.warn('[sync] auto-sync upload failed:', err.message);
   } finally {
     autoSyncInFlight = false;
   }
 }, 3000);
+
+/**
+ * Startup pull — merges the newest Drive backup in as soon as the silent
+ * sign-in lands, so opening the page shows current data without a trip to
+ * Settings. Additive (never drops local-only expenses) and silent on failure,
+ * since nothing here is user-initiated.
+ */
+async function autoPull() {
+  try {
+    const result = await sync.pullLatestBackup();
+    if (!result) return;
+    if (!result.success) {
+      console.warn('[sync] auto-pull merge rejected:', result.message);
+      return;
+    }
+    applyTheme();
+    const changed = result.expensesAdded + result.expensesUpdated;
+    if (changed > 0) showMessage(`Synced from Drive (${changed} updated)`);
+    render();
+  } catch (err) {
+    console.warn('[sync] auto-pull failed:', err.message);
+  }
+}
 
 // ── CSV ──────────────────────────────────────────────────────────────────────
 
@@ -549,10 +575,14 @@ function start() {
 
   render();
 
-  // Restore a Drive session silently when this browser has consented before.
+  // Restore a Drive session silently when this browser has consented before,
+  // then pull the newest backup so the page opens on current data.
   if (sync.hasSignedInBefore() && sync.isDriveConfigured()) {
     sync.signIn({ silent: true })
-      .then(() => render())
+      .then(() => {
+        render();
+        return autoPull();
+      })
       .catch(() => { /* stay signed out; Settings offers a manual sign-in */ });
   }
 

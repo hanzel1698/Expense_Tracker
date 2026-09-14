@@ -85,10 +85,42 @@ application** OAuth client ID:
 4. If the OAuth consent screen is in **Testing** mode, add your Google account
    as a test user.
 5. Put the client ID in one of two places:
-   - `web/config.js` — ships with the deploy, so every visitor gets it; or
-   - *Settings → Google OAuth client ID* — stored in that browser only.
+   - `web/config.js` — ships with the deploy, so the app signs in on its own and
+     nobody has to paste anything. **Use this one**; or
+   - *Settings → Google OAuth client ID* — stored in that browser's
+     `localStorage` only, so it has to be re-entered on every new browser and
+     any time site data is cleared.
 
 Everything except Drive sync works with no client ID configured.
+
+The client ID is **not a secret**. The browser sends it in the clear to Google on
+every sign-in, and the deploy serves `config.js` to every visitor — a private
+GitHub repo hides it from the repo, not from the site. The *Authorised JavaScript
+origins* allowlist is what actually restricts its use, so keep that list tight.
+
+## How sync behaves
+
+| When | What happens |
+| --- | --- |
+| Page load, previously signed in | Silent token refresh, then an **automatic pull** of the newest Drive backup, merged into local data |
+| Interactive sign-in | Same pull, so a fresh browser fills itself from Drive |
+| Any edit | **Upload, debounced 3 s** after the last change — one upload per burst, not per keystroke |
+| *Settings → Upload backup* | Timestamped snapshot, kept as a point-in-time restore point |
+| *Settings → Download latest backup* | Explicit restore of the newest backup |
+
+Auto-sync overwrites a single rolling file, `expense_data_latest.json`, so the
+Drive folder no longer grows by one file per edit burst. Manual uploads still
+write `expense_data_<timestamp>.json`, and both show up in the restore list.
+
+The two pull paths differ deliberately, and the difference matters:
+
+- The **automatic** pull is additive — it adds and updates from remote but never
+  drops a local-only expense, since a silent background merge must not destroy
+  an expense entered offline whose upload never landed.
+- The **explicit** restore keeps full `MERGE_BY_DATE` semantics, dropping
+  expenses missing from the backup, and reports the count it removed.
+
+So deletions propagate between devices on an explicit restore, not on page load.
 
 Two things differ from Android by necessity:
 

@@ -987,7 +987,6 @@ class ModernMainActivity : ComponentActivity() {
                                             }
                                         }
                                         performViewBackups()
-                                        }
                                     },
                                     isSignedIn = isSignedIn,
                                     onRestoreFromFile = { restoreFileLauncher.launch("*/*") },

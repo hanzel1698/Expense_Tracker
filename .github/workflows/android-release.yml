@@ -64,17 +64,17 @@ jobs:
 
       - name: Install release keystore
         env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           missing=()
-          [ -z "${KEYSTORE_BASE64:-}" ] && missing+=("KEYSTORE_BASE64")
-          [ -z "${KEYSTORE_PASSWORD:-}" ] && missing+=("KEYSTORE_PASSWORD")
-          [ -z "${KEY_ALIAS:-}" ] && missing+=("KEY_ALIAS")
-          [ -z "${KEY_PASSWORD:-}" ] && missing+=("KEY_PASSWORD")
+          [ -z "${KEYSTORE_BASE64:-}" ] && missing+=("ANDROID_KEYSTORE_BASE64")
+          [ -z "${KEYSTORE_PASSWORD:-}" ] && missing+=("ANDROID_KEYSTORE_PASSWORD")
+          [ -z "${KEY_ALIAS:-}" ] && missing+=("ANDROID_KEY_ALIAS")
+          [ -z "${KEY_PASSWORD:-}" ] && missing+=("ANDROID_KEY_PASSWORD")
           if [ ${#missing[@]} -gt 0 ]; then
             echo "::error::Missing or empty release signing secret(s): ${missing[*]}. Add them under Settings -> Secrets and variables -> Actions before running this workflow."
             exit 1
@@ -82,7 +82,7 @@ jobs:
           KEYSTORE_PATH="$RUNNER_TEMP/release.keystore.jks"
           echo "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
           if [ ! -s "$KEYSTORE_PATH" ]; then
-            echo "::error::Decoded keystore is empty - check the KEYSTORE_BASE64 secret."
+            echo "::error::Decoded keystore is empty - check the ANDROID_KEYSTORE_BASE64 secret."
             exit 1
           fi
           {

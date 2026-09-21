@@ -1,0 +1,25 @@
+# Auto detect text files and normalize line endings to LF in the repository.
+# Working-tree files are checked out with the platform's native line endings
+# (CRLF on Windows), so this matches what was already on disk and stops
+# git from reporting every line as changed.
+* text=auto
+
+# Explicitly keep binary files untouched
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.jar binary
+*.keystore binary
+*.jks binary
+*.ttf binary
+*.otf binary
+
+# Force LF for shell scripts (needed even on Windows checkouts)
+*.sh text eol=lf
+gradlew text eol=lf
+
+# Force CRLF for Windows batch files
+*.bat text eol=crlf

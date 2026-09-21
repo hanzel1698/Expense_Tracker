@@ -78,35 +78,38 @@ On Windows, use `gradlew.bat` instead of `./gradlew`.
 
 ## Publish / release
 
-### Automated: build → GitHub Release → phone
+### Automated: build → Firebase App Distribution → phone
 
 `.github/workflows/android-release.yml` is the one-click path from a commit to
-the app on a device. Trigger it manually from **Actions → Android Release Build
-→ Run workflow** (optionally naming the run), and it will:
+the app on your device. Solo internal testing only — no Play Store, no AAB, no
+release notes. Trigger it manually from **Actions → Android Release Build →
+Run workflow** (optionally naming the run), and it will:
 
-1. Stamp the build with `CI_VERSION_CODE = <run number>`, so `versionCode` is
-   the run number and `versionName` is `1.<run number>` — every build is a
-   distinct, increasing version.
-2. Regenerate `app/src/main/assets/release_notes.json` from the commits since
-   the last `v*` tag, so the in-app **What's New** screen shows this build's
-   changes.
-3. Build the release APK (signed with the checked-in `debug.keystore`, see
-   [Signing](#signing-debugci-builds) — the fingerprint never changes, so each
-   build installs over the previous one).
-4. Upload the APK to **Firebase App Distribution**, which notifies the testers
-   in the Firebase App Tester app on their device.
-5. Publish a **GitHub Release** tagged `v1.<run number>` with the APK attached.
+1. Compute `versionCode` / `versionName` purely from the GitHub run number
+   (`n = run_number - 1`; `versionName = "{1 + n/100}.{n%100}"`,
+   e.g. run 1 → `1.0`, run 100 → `1.99`, run 101 → `2.0`) and patch them into
+   `app/build.gradle.kts` for this run only — nothing is committed back.
+2. Decode the release keystore secret and build the release APK signed with
+   it (see [Signing](#signing-debugci-builds)).
+3. Upload the APK as a workflow build artifact (30-day retention), so it's
+   downloadable even before Firebase is configured.
+4. Upload the APK to **Firebase App Distribution**, which notifies you in the
+   Firebase App Tester app on your device.
 
-Steps 1–3 and 5 need no configuration. Step 4 is skipped with a warning until
-these are set under **Settings → Secrets and variables → Actions**:
+Step 2 fails fast if the signing secrets below aren't set. Step 4 is skipped
+with a warning if the Firebase secret/variable aren't set. Configure these
+under **Settings → Secrets and variables → Actions**:
 
 | Name | Kind | Value |
 | --- | --- | --- |
+| `KEYSTORE_BASE64` | Secret | `base64 -w0 your-release.keystore.jks` output |
+| `KEYSTORE_PASSWORD` | Secret | Keystore password |
+| `KEY_ALIAS` | Secret | Key alias inside the keystore |
+| `KEY_PASSWORD` | Secret | Key password |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | Secret | Contents of a Google Cloud service-account JSON key with the **Firebase App Distribution Admin** role |
 | `FIREBASE_APP_ID` | Variable | The Firebase Android App ID, e.g. `1:123456789012:android:abcdef…` |
-| `FIREBASE_TESTERS` | Variable *(optional)* | Comma-separated tester emails (defaults to `hanzel.h.fernandez@gmail.com`) |
 
-To get those values:
+To get the Firebase values:
 
 1. In the [Firebase console](https://console.firebase.google.com), open (or
    create) a project and **Add app → Android** with package name
@@ -118,11 +121,13 @@ To get those values:
    (Google Cloud IAM) → create a service account, grant it **Firebase App
    Distribution Admin**, then create a JSON key and paste the whole file into
    the `FIREBASE_SERVICE_ACCOUNT_JSON` secret.
-4. In **App Distribution → Testers & Groups**, add the tester emails, and
-   install the **Firebase App Tester** app on the device from the invite email.
+4. In **App Distribution → Testers & Groups**, add
+   `hanzel.h.fernandez@gmail.com` (the workflow's single hardcoded tester),
+   and install the **Firebase App Tester** app on the device from the invite
+   email.
 
 `pr-build.yml` stays the lightweight check — manual, debug + release APKs as
-build artifacts, no release, no distribution.
+build artifacts, no release, no distribution, no signing secrets needed.
 
 ### Local
 

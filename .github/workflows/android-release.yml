@@ -1,8 +1,8 @@
 name: Android Release Build
 
-# Build a release APK, hand it to Firebase App Distribution (installs on the
-# tester's device), and publish it as a GitHub Release. Manual-only: trigger
-# from the Actions tab (workflow_dispatch).
+# Build a signed release APK and hand it to Firebase App Distribution for
+# solo internal testing. Manual-only: trigger from the Actions tab
+# (workflow_dispatch). No Play Store, no AAB, no release notes.
 
 on:
   workflow_dispatch:
@@ -15,7 +15,7 @@ on:
 run-name: "${{ inputs.run_name || format('Android Release Build #{0}', github.run_number) }}"
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: android-release
@@ -25,17 +25,9 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
-    # Give every CI build its own version code so App Distribution releases are
-    # distinguishable and each one re-triggers the in-app What's New screen.
-    env:
-      CI_VERSION_CODE: ${{ github.run_number }}
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          # Full history so the release-notes script can diff against the last tag.
-          fetch-depth: 0
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -47,19 +39,66 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Generate release notes for APK
-        run: python3 scripts/generate-android-release-notes.py .
+      # n starts at 0 on the first run and increases by 1 every run, so
+      # versionName goes 1.0, 1.1, ... 1.99, 2.0, 2.1, ... — minor rolls
+      # 0-99 and bumps major on rollover. versionCode is just the run
+      # number: a plain, always-increasing integer as Android requires.
+      - name: Compute version
+        id: version
+        run: |
+          set -euo pipefail
+          n=$(( ${{ github.run_number }} - 1 ))
+          major=$(( 1 + n / 100 ))
+          minor=$(( n % 100 ))
+          echo "name=${major}.${minor}" >> "$GITHUB_OUTPUT"
+          echo "code=${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+
+      # Ephemeral, uncommitted edit scoped to this run only — nothing is
+      # pushed back to the repo.
+      - name: Apply computed version to app/build.gradle.kts
+        run: |
+          set -euo pipefail
+          sed -i "s/versionCode = 1\$/versionCode = ${{ steps.version.outputs.code }}/" app/build.gradle.kts
+          sed -i "s/versionName = \"1.0\"/versionName = \"${{ steps.version.outputs.name }}\"/" app/build.gradle.kts
+          grep -n "versionCode = ${{ steps.version.outputs.code }}\|versionName = \"${{ steps.version.outputs.name }}\"" app/build.gradle.kts
+
+      - name: Install release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -z "${KEYSTORE_BASE64:-}" ] && missing+=("KEYSTORE_BASE64")
+          [ -z "${KEYSTORE_PASSWORD:-}" ] && missing+=("KEYSTORE_PASSWORD")
+          [ -z "${KEY_ALIAS:-}" ] && missing+=("KEY_ALIAS")
+          [ -z "${KEY_PASSWORD:-}" ] && missing+=("KEY_PASSWORD")
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Missing or empty release signing secret(s): ${missing[*]}. Add them under Settings -> Secrets and variables -> Actions before running this workflow."
+            exit 1
+          fi
+          KEYSTORE_PATH="$RUNNER_TEMP/release.keystore.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+          if [ ! -s "$KEYSTORE_PATH" ]; then
+            echo "::error::Decoded keystore is empty - check the KEYSTORE_BASE64 secret."
+            exit 1
+          fi
+          {
+            echo "KEYSTORE_FILE=$KEYSTORE_PATH"
+            echo "KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "KEY_ALIAS=$KEY_ALIAS"
+            echo "KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
 
       - name: Build release APK
-        # No Play upload keystore is configured, so the release build is signed
-        # with the debug keystore checked into the repo root (see
-        # app/build.gradle.kts). That key is stable across every build, so each
-        # distributed APK installs cleanly over the previous one.
         run: ./gradlew assembleRelease --stacktrace
 
       - name: Find APK
         id: apk
         run: |
+          set -euo pipefail
           APK=$(find . -path "*/build/outputs/apk/release/*.apk" | head -1)
           if [ -z "$APK" ]; then
             echo "Error: release APK not found"
@@ -68,21 +107,10 @@ jobs:
           echo "path=$APK" >> "$GITHUB_OUTPUT"
           echo "name=$(basename "$APK")" >> "$GITHUB_OUTPUT"
 
-      - name: Extract app version
-        id: version
-        run: |
-          set -euo pipefail
-          BASE_NAME=$(grep -E 'versionName\s*=' app/build.gradle.kts | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
-          # Mirror app/build.gradle.kts: CI builds are <major>.<run number>.
-          VERSION_NAME="${BASE_NAME%%.*}.$CI_VERSION_CODE"
-          echo "name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
-          echo "code=$CI_VERSION_CODE" >> "$GITHUB_OUTPUT"
-          echo "tag=v${VERSION_NAME}" >> "$GITHUB_OUTPUT"
-
       - name: Upload release APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-release-${{ steps.version.outputs.tag }}
+          name: app-release-${{ steps.version.outputs.name }}-${{ github.run_number }}
           path: ${{ steps.apk.outputs.path }}
           retention-days: 30
 
@@ -90,58 +118,24 @@ jobs:
         id: firebase_config
         env:
           FIREBASE_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          # The Firebase App ID is not a secret (it ships inside
-          # google-services.json), so a repository variable is enough.
-          FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID || secrets.FIREBASE_APP_ID }}
+          FIREBASE_APP_ID: ${{ vars.FIREBASE_APP_ID }}
         run: |
           set -euo pipefail
-          if [ -n "$FIREBASE_SERVICE_ACCOUNT_JSON" ] && [ -n "$FIREBASE_APP_ID" ]; then
-            echo "configured=true" >> "$GITHUB_OUTPUT"
-            echo "app_id=$FIREBASE_APP_ID" >> "$GITHUB_OUTPUT"
-          else
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT_JSON" ]; then
+            echo "::warning title=Firebase App Distribution skipped::FIREBASE_SERVICE_ACCOUNT_JSON secret is not set. Add it under Settings -> Secrets and variables -> Actions to enable distribution."
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "::warning title=Firebase App Distribution skipped::Set the FIREBASE_SERVICE_ACCOUNT_JSON repository secret and the FIREBASE_APP_ID repository variable to enable APK distribution."
+          elif [ -z "$FIREBASE_APP_ID" ]; then
+            echo "::warning title=Firebase App Distribution skipped::FIREBASE_APP_ID repository variable is not set. Add it under Settings -> Secrets and variables -> Actions -> Variables to enable distribution."
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
-
-      - name: Compose Firebase release notes
-        if: steps.firebase_config.outputs.configured == 'true'
-        run: |
-          set -uo pipefail
-          NOTES_FILE="firebase-release-notes.txt"
-          {
-            echo "Version ${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }}) - build ${{ github.run_number }}"
-            echo "Commit ${GITHUB_SHA:0:7} on ${GITHUB_REF_NAME}"
-            echo
-            # Reuse the feature list already generated for the in-app "What's New"
-            # screen. Never fail the build over release notes - fall back to the
-            # commit subject.
-            jq -r '.features[] | "- " + .' app/src/main/assets/release_notes.json 2>/dev/null \
-              || git log -1 --pretty='- %s'
-          } > "$NOTES_FILE"
-          cat "$NOTES_FILE"
 
       - name: Distribute release APK to Firebase App Distribution
         if: steps.firebase_config.outputs.configured == 'true'
         uses: wzieba/Firebase-Distribution-Github-Action@v1.7.1
         with:
-          appId: ${{ steps.firebase_config.outputs.app_id }}
+          appId: ${{ vars.FIREBASE_APP_ID }}
           serviceCredentialsFileContent: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           file: ${{ steps.apk.outputs.path }}
-          testers: ${{ vars.FIREBASE_TESTERS || 'hanzel.h.fernandez@gmail.com' }}
-          releaseNotesFile: firebase-release-notes.txt
-
-      - name: Publish GitHub Release
-        uses: ncipollo/release-action@v1
-        with:
-          artifacts: ${{ steps.apk.outputs.path }}
-          tag: ${{ steps.version.outputs.tag }}
-          name: Release ${{ steps.version.outputs.name }} (build ${{ github.run_number }})
-          token: ${{ secrets.GITHUB_TOKEN }}
-          generateReleaseNotes: true
-          makeLatest: true
-          body: |
-            **Version:** ${{ steps.version.outputs.name }} (${{ steps.version.outputs.code }})
-            **Commit:** ${{ github.sha }}
-
-            Download the APK to sideload on a device, or install it from the
-            Firebase App Tester app if you are on the tester list.
+          testers: hanzel.h.fernandez@gmail.com

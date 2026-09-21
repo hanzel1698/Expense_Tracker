@@ -155,10 +155,8 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation("androidx.compose.material:material-icons-extended")
     
-    // Google Drive API dependencies
-    implementation("com.google.apis:google-api-services-drive:v3-rev20220815-2.0.0")
-    implementation("com.google.api-client:google-api-client-android:2.0.0")
-    implementation("com.google.oauth-client:google-oauth-client-jetty:1.34.1")
+    // Google Sign-In — used only for the account identity/gate; backup storage goes through
+    // the Storage Access Framework (see SimpleGoogleDriveManager), not the Drive REST API.
     implementation("com.google.android.gms:play-services-auth:20.7.0")
 
     testImplementation(libs.junit)

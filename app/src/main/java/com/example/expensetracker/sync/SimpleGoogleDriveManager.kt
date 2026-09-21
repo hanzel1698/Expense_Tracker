@@ -14,6 +14,13 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
+data class BackupInfo(
+    val fileId: String,
+    val fileName: String,
+    val modifiedTime: String,
+    val size: String
+)
+
 /**
  * Backs expense backups with a user-picked folder via the Storage Access Framework rather than
  * the Drive REST API. The REST API's `drive.file` scope can only ever see files/folders the app

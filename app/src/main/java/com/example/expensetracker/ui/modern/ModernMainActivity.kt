@@ -1,6 +1,5 @@
 package com.example.expensetracker.ui.modern
 
-import android.app.Activity
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -48,7 +47,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.tasks.Task
-import com.google.api.client.googleapis.extensions.android.gms.auth.UserRecoverableAuthIOException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.drop
@@ -95,35 +93,6 @@ class ModernMainActivity : ComponentActivity() {
 
     private fun refreshSignInStatus() {
         signInRefreshTrigger++
-    }
-
-    // Drive calls request their OAuth token via GoogleAccountCredential/GoogleAuthUtil, a
-    // separate path from GoogleSignIn's own consent. The first time a given (account, scope,
-    // OAuth client) combination is used, Google returns a recoverable "NEED_REMOTE_CONSENT"
-    // error carrying an Intent the user must complete once; after that the token is cached and
-    // this path isn't hit again. Without handling it, the failure surfaces as an opaque
-    // exception with a null message.
-    private var pendingDriveRetry: (() -> Unit)? = null
-
-    private val driveConsentLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val retry = pendingDriveRetry
-        pendingDriveRetry = null
-        if (result.resultCode == Activity.RESULT_OK && retry != null) {
-            retry()
-        } else {
-            signInErrorMessage = "Google Drive access wasn't granted, so backup/restore can't continue."
-        }
-    }
-
-    /** Returns true if [error] was a recoverable Drive-consent requirement (handled via the
-     *  consent screen + [retry]), false if the caller should show its own failure message. */
-    private fun tryResolveDriveConsent(error: Throwable, retry: () -> Unit): Boolean {
-        val consentIntent = (error as? UserRecoverableAuthIOException)?.intent ?: return false
-        pendingDriveRetry = retry
-        driveConsentLauncher.launch(consentIntent)
-        return true
     }
 
     // Backups read from and write to a folder the user explicitly picks via Android's document
@@ -936,80 +905,68 @@ class ModernMainActivity : ComponentActivity() {
                                         }
                                     },
                                     onUploadBackup = {
-                                        fun performUpload() {
-                                            coroutineScope.launch {
-                                                isSyncing = true
-                                                val result = syncService.uploadToDrive()
-                                                result.fold(
-                                                    onSuccess = {
-                                                        showSyncMessage = it.message
-                                                        showSyncError = false
-                                                    },
-                                                    onFailure = { err ->
-                                                        if (!tryResolveDriveConsent(err, ::performUpload)) {
-                                                            showSyncMessage =
-                                                                "Upload failed: ${err.message ?: err.javaClass.simpleName}"
-                                                            showSyncError = true
-                                                        }
-                                                    }
-                                                )
-                                                isSyncing = false
-                                            }
+                                        coroutineScope.launch {
+                                            isSyncing = true
+                                            val result = syncService.uploadToDrive()
+                                            result.fold(
+                                                onSuccess = {
+                                                    showSyncMessage = it.message
+                                                    showSyncError = false
+                                                },
+                                                onFailure = { err ->
+                                                    showSyncMessage =
+                                                        "Upload failed: ${err.message ?: err.javaClass.simpleName}"
+                                                    showSyncError = true
+                                                }
+                                            )
+                                            isSyncing = false
                                         }
-                                        performUpload()
                                     },
                                     onViewBackups = {
-                                        fun performViewBackups() {
-                                            coroutineScope.launch {
-                                                isSyncing = true
-                                                val result = syncService.listAvailableBackups()
-                                                result.fold(
-                                                    onSuccess = { backups ->
-                                                        if (backups.isNotEmpty()) {
-                                                            val downloadResult =
-                                                                syncService.downloadFromDrive(backups.first().fileId)
-                                                            downloadResult.fold(
-                                                                onSuccess = { syncResult ->
-                                                                    if (syncResult.success) {
-                                                                        reloadAllFromRepository()
-                                                                        val removedMsg =
-                                                                            if (syncResult.expensesRemoved > 0)
-                                                                                ", ${syncResult.expensesRemoved} removed"
-                                                                            else ""
-                                                                        showSyncMessage =
-                                                                            "Backup restored (${syncResult.expensesAdded} added$removedMsg)"
-                                                                        showSyncError = false
-                                                                    } else {
-                                                                        showSyncMessage =
-                                                                            "Restore failed: ${syncResult.message}"
-                                                                        showSyncError = true
-                                                                    }
-                                                                },
-                                                                onFailure = { err ->
-                                                                    if (!tryResolveDriveConsent(err, ::performViewBackups)) {
-                                                                        showSyncMessage =
-                                                                            "Download failed: ${err.message ?: err.javaClass.simpleName}"
-                                                                        showSyncError = true
-                                                                    }
+                                        coroutineScope.launch {
+                                            isSyncing = true
+                                            val result = syncService.listAvailableBackups()
+                                            result.fold(
+                                                onSuccess = { backups ->
+                                                    if (backups.isNotEmpty()) {
+                                                        val downloadResult =
+                                                            syncService.downloadFromDrive(backups.first().fileId)
+                                                        downloadResult.fold(
+                                                            onSuccess = { syncResult ->
+                                                                if (syncResult.success) {
+                                                                    reloadAllFromRepository()
+                                                                    val removedMsg =
+                                                                        if (syncResult.expensesRemoved > 0)
+                                                                            ", ${syncResult.expensesRemoved} removed"
+                                                                        else ""
+                                                                    showSyncMessage =
+                                                                        "Backup restored (${syncResult.expensesAdded} added$removedMsg)"
+                                                                    showSyncError = false
+                                                                } else {
+                                                                    showSyncMessage =
+                                                                        "Restore failed: ${syncResult.message}"
+                                                                    showSyncError = true
                                                                 }
-                                                            )
-                                                        } else {
-                                                            showSyncMessage = "No backups found"
-                                                            showSyncError = true
-                                                        }
-                                                    },
-                                                    onFailure = { err ->
-                                                        if (!tryResolveDriveConsent(err, ::performViewBackups)) {
-                                                            showSyncMessage =
-                                                                "Failed to list backups: ${err.message ?: err.javaClass.simpleName}"
-                                                            showSyncError = true
-                                                        }
+                                                            },
+                                                            onFailure = { err ->
+                                                                showSyncMessage =
+                                                                    "Download failed: ${err.message ?: err.javaClass.simpleName}"
+                                                                showSyncError = true
+                                                            }
+                                                        )
+                                                    } else {
+                                                        showSyncMessage = "No backups found"
+                                                        showSyncError = true
                                                     }
-                                                )
-                                                isSyncing = false
-                                            }
+                                                },
+                                                onFailure = { err ->
+                                                    showSyncMessage =
+                                                        "Failed to list backups: ${err.message ?: err.javaClass.simpleName}"
+                                                    showSyncError = true
+                                                }
+                                            )
+                                            isSyncing = false
                                         }
-                                        performViewBackups()
                                     },
                                     isSignedIn = isSignedIn,
                                     hasBackupFolder = hasBackupFolder,

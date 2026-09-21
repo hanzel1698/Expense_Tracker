@@ -1,234 +1,176 @@
 package com.example.expensetracker.sync
 
 import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import android.util.Log
+import androidx.documentfile.provider.DocumentFile
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.google.android.gms.auth.api.signin.GoogleSignInClient
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.api.client.googleapis.extensions.android.gms.auth.GoogleAccountCredential
-import com.google.api.client.http.javanet.NetHttpTransport
-import com.google.api.client.json.gson.GsonFactory
-import com.google.api.services.drive.Drive
-import com.google.api.services.drive.DriveScopes
-import com.google.android.gms.common.api.Scope
-import com.google.api.services.drive.model.File
-import com.google.api.services.drive.model.FileList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
-
+/**
+ * Backs expense backups with a user-picked folder via the Storage Access Framework rather than
+ * the Drive REST API. The REST API's `drive.file` scope can only ever see files/folders the app
+ * itself created under the current OAuth client identity — it can't be pointed at a folder the
+ * user already has, and that identity changes whenever the app's signing key or registered OAuth
+ * client changes (e.g. a CI resign). SAF's folder picker instead lets the user explicitly select
+ * their existing Drive folder (or any other storage location), with access persisted independent
+ * of any OAuth scope.
+ *
+ * Google Sign-In is kept only for the "connected account" identity/gate in the UI, not for Drive
+ * file access.
+ */
 class SimpleGoogleDriveManager(private val context: Context) {
-    
-    private val HTTP_TRANSPORT = NetHttpTransport()
-    private val JSON_FACTORY = GsonFactory.getDefaultInstance()
-    private val APP_FOLDER = "ExpenseTracker_Backups"
-    
-    private lateinit var googleSignInClient: GoogleSignInClient
-    private var driveService: Drive? = null
-    
-    companion object {
-        private const val REQUEST_SIGN_IN = 1001
-        private const val MIME_TYPE_JSON = "application/json"
-    }
-    
+
+    private val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    private val googleSignInClient: GoogleSignInClient
+
     init {
-        setupGoogleSignIn()
-    }
-    
-    private fun setupGoogleSignIn() {
-        // Simplified Google Sign-In without requiring OAuth client ID
         val gso = GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(Scope(DriveScopes.DRIVE_FILE))
             .build()
-        
         googleSignInClient = GoogleSignIn.getClient(context, gso)
     }
-    
-    suspend fun signIn(): Boolean {
-        return try {
-            withContext(Dispatchers.IO) {
-                val account = GoogleSignIn.getLastSignedInAccount(context)
-                if (account != null && account.email != null) {
-                    createDriveService(account)
-                    true
-                } else {
-                    false
-                }
-            }
-        } catch (e: Exception) {
-            false
-        }
+
+    suspend fun signIn(): Boolean = withContext(Dispatchers.IO) {
+        GoogleSignIn.getLastSignedInAccount(context)?.email != null
     }
-    
-    suspend fun signOut() {
-        withContext(Dispatchers.IO) {
-            googleSignInClient.signOut()
-            driveService = null
-        }
+
+    suspend fun signOut() = withContext(Dispatchers.IO) {
+        googleSignInClient.signOut()
     }
-    
-    private fun createDriveService(account: GoogleSignInAccount) {
-        val credential = GoogleAccountCredential.usingOAuth2(
-            context, listOf(DriveScopes.DRIVE_FILE)
-        )
-        credential.selectedAccount = account.account
-        
-        driveService = Drive.Builder(
-            HTTP_TRANSPORT, JSON_FACTORY, credential
-        ).setApplicationName("ExpenseTracker").build()
+
+    suspend fun isSignedIn(): Boolean = withContext(Dispatchers.IO) {
+        GoogleSignIn.getLastSignedInAccount(context)?.email != null
     }
-    
+
     fun initializeDriveService(account: GoogleSignInAccount) {
-        Log.d("SimpleGoogleDriveManager", "initializeDriveService called with account: ${account.email}")
-        createDriveService(account)
-        Log.d("SimpleGoogleDriveManager", "Drive service initialization completed")
+        // No Drive service to initialize under the SAF-based backup path; kept so callers that
+        // re-attach a cached sign-in on cold start don't need to know that changed.
     }
-    
-    suspend fun isSignedIn(): Boolean {
-        return try {
-            withContext(Dispatchers.IO) {
-                val account = GoogleSignIn.getLastSignedInAccount(context)
-                val hasAccount = account != null && account.email != null
-                val hasDriveService = driveService != null
-                Log.d("SimpleGoogleDriveManager", "isSignedIn check - account: $hasAccount, driveService: $hasDriveService")
-                hasAccount && hasDriveService
-            }
-        } catch (e: Exception) {
-            Log.e("SimpleGoogleDriveManager", "Error checking sign-in status", e)
-            false
+
+    fun getGoogleSignInClient(): GoogleSignInClient = googleSignInClient
+
+    /** The backup folder the user picked via [saveFolderUri], if its access grant is still held. */
+    fun getFolderUri(): Uri? {
+        val stored = prefs.getString(KEY_FOLDER_URI, null) ?: return null
+        val uri = Uri.parse(stored)
+        val stillGranted = context.contentResolver.persistedUriPermissions.any {
+            it.uri == uri && it.isReadPermission && it.isWritePermission
         }
+        return if (stillGranted) uri else null
     }
-    
+
+    fun hasBackupFolder(): Boolean = getFolderUri() != null
+
+    /** Persists the folder [uri] returned by an `ACTION_OPEN_DOCUMENT_TREE` picker result. */
+    fun saveFolderUri(uri: Uri) {
+        context.contentResolver.takePersistableUriPermission(
+            uri,
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        )
+        prefs.edit().putString(KEY_FOLDER_URI, uri.toString()).apply()
+    }
+
+    private fun folderDocument(): DocumentFile? {
+        val uri = getFolderUri() ?: return null
+        return DocumentFile.fromTreeUri(context, uri)?.takeIf { it.isDirectory }
+    }
+
     suspend fun uploadBackup(jsonData: String): Result<BackupInfo> {
         return withContext(Dispatchers.IO) {
             try {
-                val drive = driveService ?: return@withContext Result.failure(Exception("Not signed in"))
-                
-                // Create app folder if it doesn't exist
-                val appFolder = getOrCreateAppFolder(drive)
-                
-                // Create file metadata
+                val folder = folderDocument()
+                    ?: return@withContext Result.failure(Exception("No backup folder selected"))
+
                 val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
                 val fileName = "expense_data_$timestamp.json"
-                
-                val fileMetadata = File().apply {
-                    name = fileName
-                    parents = listOf(appFolder.id)
-                }
-                
-                // Upload file
-                val uploadedFile = drive.files().create(fileMetadata, 
-                    com.google.api.client.http.ByteArrayContent.fromString(MIME_TYPE_JSON, jsonData)
-                ).execute()
-                
-                val backupInfo = BackupInfo(
-                    fileId = uploadedFile.id ?: "",
-                    fileName = uploadedFile.name?.toString() ?: fileName,
-                    modifiedTime = uploadedFile.modifiedTime?.toString() ?: "",
-                    size = "${uploadedFile.size ?: 0} bytes"
+
+                val file = folder.createFile(MIME_TYPE_JSON, fileName)
+                    ?: return@withContext Result.failure(Exception("Could not create backup file in the selected folder"))
+
+                val bytes = jsonData.toByteArray()
+                context.contentResolver.openOutputStream(file.uri)?.use { it.write(bytes) }
+                    ?: return@withContext Result.failure(Exception("Could not write backup file"))
+
+                Result.success(
+                    BackupInfo(
+                        fileId = file.uri.toString(),
+                        fileName = file.name ?: fileName,
+                        modifiedTime = LocalDateTime.now().toString(),
+                        size = "${bytes.size} bytes"
+                    )
                 )
-                
-                Result.success(backupInfo)
-                
             } catch (e: Exception) {
+                Log.e("SimpleGoogleDriveManager", "uploadBackup failed", e)
                 Result.failure(e)
             }
         }
     }
-    
+
     suspend fun downloadBackup(fileId: String): Result<String> {
         return withContext(Dispatchers.IO) {
             try {
-                val drive = driveService ?: return@withContext Result.failure(Exception("Not signed in"))
-                
-                val outputStream = ByteArrayOutputStream()
-                drive.files().get(fileId).executeMediaAndDownloadTo(outputStream)
-                
-                val jsonData = String(outputStream.toByteArray())
+                val uri = Uri.parse(fileId)
+                val jsonData = context.contentResolver.openInputStream(uri)
+                    ?.bufferedReader()?.use { it.readText() }
+                    ?: return@withContext Result.failure(Exception("Could not read backup file"))
                 Result.success(jsonData)
-                
             } catch (e: Exception) {
+                Log.e("SimpleGoogleDriveManager", "downloadBackup failed", e)
                 Result.failure(e)
             }
         }
     }
-    
+
     suspend fun listBackups(): Result<List<BackupInfo>> {
         return withContext(Dispatchers.IO) {
             try {
-                val drive = driveService ?: return@withContext Result.failure(Exception("Not signed in"))
-                
-                val appFolder = getOrCreateAppFolder(drive)
-                
-                val result = drive.files().list()
-                    .setQ("name contains 'expense_data_' and '${appFolder.id}' in parents and trashed=false")
-                    .setOrderBy("modifiedTime desc")
-                    .setFields("files(id, name, modifiedTime, size)")
-                    .execute()
-                
-                val backups = result.files?.map { file ->
-                    BackupInfo(
-                        fileId = file.id ?: "",
-                        fileName = file.name?.toString() ?: "",
-                        modifiedTime = file.modifiedTime?.toString() ?: "",
-                        size = "${file.size ?: 0} bytes"
-                    )
-                } ?: emptyList()
-                
+                val folder = folderDocument()
+                    ?: return@withContext Result.failure(Exception("No backup folder selected"))
+
+                val backups = folder.listFiles()
+                    .filter { it.isFile && it.name?.let { n -> n.startsWith("expense_data_") && n.endsWith(".json") } == true }
+                    .sortedByDescending { it.lastModified() }
+                    .map {
+                        BackupInfo(
+                            fileId = it.uri.toString(),
+                            fileName = it.name ?: "",
+                            modifiedTime = it.lastModified().toString(),
+                            size = "${it.length()} bytes"
+                        )
+                    }
+
                 Result.success(backups)
-                
             } catch (e: Exception) {
+                Log.e("SimpleGoogleDriveManager", "listBackups failed", e)
                 Result.failure(e)
             }
         }
     }
-    
+
     suspend fun deleteBackup(fileId: String): Result<Boolean> {
         return withContext(Dispatchers.IO) {
             try {
-                val drive = driveService ?: return@withContext Result.failure(Exception("Not signed in"))
-                drive.files().delete(fileId).execute()
-                Result.success(true)
+                val uri = Uri.parse(fileId)
+                val deleted = DocumentFile.fromSingleUri(context, uri)?.delete() == true
+                Result.success(deleted)
             } catch (e: Exception) {
+                Log.e("SimpleGoogleDriveManager", "deleteBackup failed", e)
                 Result.failure(e)
             }
         }
     }
-    
-    private suspend fun getOrCreateAppFolder(drive: Drive): File {
-        return withContext(Dispatchers.IO) {
-            try {
-                // Check if app folder exists
-                val result = drive.files().list()
-                    .setQ("name='$APP_FOLDER' and mimeType='application/vnd.google-apps.folder' and trashed=false")
-                    .setFields("files(id, name)")
-                    .execute()
-                
-                val existingFolder = result.files?.firstOrNull()
-                if (existingFolder != null) {
-                    return@withContext existingFolder
-                }
-                
-                // Create new folder
-                val folderMetadata = File().apply {
-                    name = APP_FOLDER
-                    mimeType = "application/vnd.google-apps.folder"
-                }
-                
-                drive.files().create(folderMetadata).setFields("id, name").execute()
-                
-            } catch (e: Exception) {
-                throw e
-            }
-        }
-    }
-    
-    fun getGoogleSignInClient(): GoogleSignInClient {
-        return googleSignInClient
+
+    companion object {
+        private const val PREFS_NAME = "drive_backup_prefs"
+        private const val KEY_FOLDER_URI = "backup_folder_uri"
+        private const val MIME_TYPE_JSON = "application/json"
     }
 }

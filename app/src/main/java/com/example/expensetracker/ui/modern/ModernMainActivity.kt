@@ -126,6 +126,22 @@ class ModernMainActivity : ComponentActivity() {
         return true
     }
 
+    // Backups read from and write to a folder the user explicitly picks via Android's document
+    // tree picker, not one the app searches for/creates on its own — see SimpleGoogleDriveManager
+    // for why: the Drive REST API's drive.file scope can only ever see files/folders the app's
+    // current OAuth client identity created itself, so it can never be pointed at a folder the
+    // user already has and expects the app to use.
+    private var backupFolderRefreshTrigger by mutableStateOf(0)
+
+    private val folderPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            syncService.saveBackupFolder(uri)
+            backupFolderRefreshTrigger++
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -406,6 +422,7 @@ class ModernMainActivity : ComponentActivity() {
 
                     // ── Sync state ─────────────────────────────────────────────────
                     var isSignedIn by remember { mutableStateOf(startSignedIn) }
+                    var hasBackupFolder by remember { mutableStateOf(syncService.hasBackupFolder()) }
                     var isSyncing by remember { mutableStateOf(false) }
                     var showSyncMessage by remember { mutableStateOf("") }
                     var showSyncError by remember { mutableStateOf(false) }
@@ -501,6 +518,12 @@ class ModernMainActivity : ComponentActivity() {
                     LaunchedEffect(signInRefreshTrigger) {
                         if (signInRefreshTrigger > 0) {
                             isSignedIn = syncService.isSignedIn()
+                        }
+                    }
+
+                    LaunchedEffect(backupFolderRefreshTrigger) {
+                        if (backupFolderRefreshTrigger > 0) {
+                            hasBackupFolder = syncService.hasBackupFolder()
                         }
                     }
 
@@ -989,6 +1012,8 @@ class ModernMainActivity : ComponentActivity() {
                                         performViewBackups()
                                     },
                                     isSignedIn = isSignedIn,
+                                    hasBackupFolder = hasBackupFolder,
+                                    onChooseBackupFolder = { folderPickerLauncher.launch(null) },
                                     onRestoreFromFile = { restoreFileLauncher.launch("*/*") },
                                     isDeveloperMode = isDeveloperMode,
                                     onToggleDevMode = {

@@ -69,6 +69,8 @@ fun ModernSettingsScreen(
     onUploadBackup: () -> Unit,
     onViewBackups: () -> Unit,
     isSignedIn: Boolean,
+    hasBackupFolder: Boolean,
+    onChooseBackupFolder: () -> Unit,
     isDeveloperMode: Boolean = false,
     onToggleDevMode: () -> Unit = {},
     onDevModePressStart: () -> Unit = {},
@@ -143,22 +145,46 @@ fun ModernSettingsScreen(
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            if (hasBackupFolder) "Backup folder selected" else "No backup folder selected",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (hasBackupFolder) extras.success else MaterialTheme.colorScheme.error
+                        )
+                        OutlinedButton(
+                            onClick = onChooseBackupFolder,
+                            shape = RoundedCornerShape(50)
+                        ) { Text(if (hasBackupFolder) "Change folder" else "Choose folder…") }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        "Pick the folder in your Drive (or other storage) where backups are read from and written to — this lets the app use a folder you already have.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         FilledTonalButton(
                             onClick = onUploadBackup,
+                            enabled = hasBackupFolder,
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(50)
                         ) { Text("Upload") }
                         OutlinedButton(
                             onClick = { showBackupsDialog = true },
+                            enabled = hasBackupFolder,
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(50)
                         ) { Text("Download") }
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        "• Upload saves your data to Google Drive\n• Download retrieves backups from Drive",
+                        "• Upload saves your data to the selected folder\n• Download retrieves backups from it",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

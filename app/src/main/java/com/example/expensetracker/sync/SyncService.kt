@@ -1,6 +1,7 @@
 package com.example.expensetracker.sync
 
 import android.content.Context
+import android.net.Uri
 import com.example.expensetracker.data.AppData
 import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import com.example.expensetracker.data.DataRepository
@@ -389,4 +390,8 @@ class SyncService(private val context: Context) {
     }
     
     fun getGoogleSignInClient() = driveManager.getGoogleSignInClient()
+
+    fun hasBackupFolder(): Boolean = driveManager.hasBackupFolder()
+
+    fun saveBackupFolder(uri: Uri) = driveManager.saveFolderUri(uri)
 }

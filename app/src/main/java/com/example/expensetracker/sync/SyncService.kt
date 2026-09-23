@@ -57,16 +57,16 @@ class SyncService(private val context: Context) {
         .create()
     private val driveManager = SimpleGoogleDriveManager(context)
     
-    suspend fun uploadToDrive(): Result<SyncResult> {
+    /**
+     * Writes local data to the user-picked backup folder. Only the folder grant is needed (SAF),
+     * not Google sign-in. `rolling = true` overwrites one rolling file (used by auto-backup).
+     */
+    suspend fun uploadToDrive(rolling: Boolean = false): Result<SyncResult> {
         return try {
-            if (!driveManager.isSignedIn()) {
-                return Result.failure(Exception("Not signed in to Google Drive"))
-            }
-            
             val localData = DataRepository.load(context)
             val jsonData = gson.toJson(localData)
             
-            val backupInfo = driveManager.uploadBackup(jsonData)
+            val backupInfo = driveManager.uploadBackup(jsonData, rolling)
             
             backupInfo.fold(
                 onSuccess = { 

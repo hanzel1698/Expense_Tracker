@@ -405,8 +405,10 @@ class ModernMainActivity : ComponentActivity() {
                     // Reuses the same state snapshot as auto-save above, but debounced by a
                     // few seconds so a burst of edits (typing, CSV import, recurring-expense
                     // generation) results in one upload, not one per change. Silent on
-                    // failure/offline/signed-out — never blocks local save or surfaces an
+                    // failure/offline/no folder — never blocks local save or surfaces an
                     // error; the manual Upload button in Settings remains as a fallback.
+                    // Overwrites a single rolling file so the folder doesn't fill up with
+                    // one timestamped backup per edit burst.
                     val autoSyncInFlight = remember { AtomicBoolean(false) }
                     LaunchedEffect(Unit) {
                         snapshotFlow {
@@ -428,11 +430,11 @@ class ModernMainActivity : ComponentActivity() {
                             .drop(1) // skip the baseline emission on first collection
                             .debounce(3000)
                             .collect {
-                                if (!isSignedIn) return@collect
+                                if (!hasBackupFolder) return@collect
                                 if (!autoSyncInFlight.compareAndSet(false, true)) return@collect
                                 coroutineScope.launch(Dispatchers.IO) {
                                     try {
-                                        syncService.uploadToDrive().onFailure { e ->
+                                        syncService.uploadToDrive(rolling = true).onFailure { e ->
                                             Log.w("ModernMainActivity", "Auto-sync upload failed: ${e.message}")
                                         }
                                     } catch (e: Exception) {

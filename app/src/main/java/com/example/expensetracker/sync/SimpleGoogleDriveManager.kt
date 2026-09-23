@@ -90,21 +90,38 @@ class SimpleGoogleDriveManager(private val context: Context) {
         return DocumentFile.fromTreeUri(context, uri)?.takeIf { it.isDirectory }
     }
 
-    suspend fun uploadBackup(jsonData: String): Result<BackupInfo> {
+    /**
+     * Writes [jsonData] to the backup folder. `rolling = true` (auto-backup) overwrites a single
+     * [ROLLING_BACKUP_NAME] file in place so repeated auto-backups don't pile up one file per
+     * edit burst; otherwise a new timestamped file is created (manual Upload).
+     */
+    suspend fun uploadBackup(jsonData: String, rolling: Boolean = false): Result<BackupInfo> {
         return withContext(Dispatchers.IO) {
             try {
                 val folder = folderDocument()
                     ?: return@withContext Result.failure(Exception("No backup folder selected"))
 
-                val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
-                val fileName = "expense_data_$timestamp.json"
-
-                val file = folder.createFile(MIME_TYPE_JSON, fileName)
-                    ?: return@withContext Result.failure(Exception("Could not create backup file in the selected folder"))
-
+                val fileName = if (rolling) {
+                    ROLLING_BACKUP_NAME
+                } else {
+                    val timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm-ss"))
+                    "expense_data_$timestamp.json"
+                }
                 val bytes = jsonData.toByteArray()
-                context.contentResolver.openOutputStream(file.uri)?.use { it.write(bytes) }
-                    ?: return@withContext Result.failure(Exception("Could not write backup file"))
+
+                val existing = if (rolling) folder.findFile(fileName)?.takeIf { it.isFile } else null
+                val written = existing?.let { overwrite(it, bytes) } == true
+                val file = if (written) {
+                    existing!!
+                } else {
+                    // Fall back to a fresh file if the provider can't truncate in place.
+                    existing?.delete()
+                    val created = folder.createFile(MIME_TYPE_JSON, fileName)
+                        ?: return@withContext Result.failure(Exception("Could not create backup file in the selected folder"))
+                    context.contentResolver.openOutputStream(created.uri)?.use { it.write(bytes) }
+                        ?: return@withContext Result.failure(Exception("Could not write backup file"))
+                    created
+                }
 
                 Result.success(
                     BackupInfo(
@@ -119,6 +136,14 @@ class SimpleGoogleDriveManager(private val context: Context) {
                 Result.failure(e)
             }
         }
+    }
+
+    /** Truncates and rewrites [file]; false if the provider doesn't support "wt" mode. */
+    private fun overwrite(file: DocumentFile, bytes: ByteArray): Boolean = try {
+        context.contentResolver.openOutputStream(file.uri, "wt")?.use { it.write(bytes) } != null
+    } catch (e: Exception) {
+        Log.w("SimpleGoogleDriveManager", "In-place overwrite failed, recreating", e)
+        false
     }
 
     suspend fun downloadBackup(fileId: String): Result<String> {
@@ -179,5 +204,7 @@ class SimpleGoogleDriveManager(private val context: Context) {
         private const val PREFS_NAME = "drive_backup_prefs"
         private const val KEY_FOLDER_URI = "backup_folder_uri"
         private const val MIME_TYPE_JSON = "application/json"
+        // Still starts with `expense_data_` so listBackups() picks it up.
+        private const val ROLLING_BACKUP_NAME = "expense_data_latest.json"
     }
 }

@@ -13,6 +13,9 @@ import com.google.gson.TypeAdapter
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonWriter
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -56,6 +59,20 @@ class SyncService(private val context: Context) {
         .setPrettyPrinting()
         .create()
     private val driveManager = SimpleGoogleDriveManager(context)
+
+    // Epoch millis of the last successful upload (manual or auto) and download/restore,
+    // persisted so Settings can show them across restarts.
+    private val timestampPrefs = context.getSharedPreferences(TIMESTAMP_PREFS, Context.MODE_PRIVATE)
+    private val _lastUploadAt = MutableStateFlow(timestampPrefs.getLong(KEY_LAST_UPLOAD, 0L).takeIf { it > 0 })
+    private val _lastDownloadAt = MutableStateFlow(timestampPrefs.getLong(KEY_LAST_DOWNLOAD, 0L).takeIf { it > 0 })
+    val lastUploadAt: StateFlow<Long?> = _lastUploadAt.asStateFlow()
+    val lastDownloadAt: StateFlow<Long?> = _lastDownloadAt.asStateFlow()
+
+    private fun recordTimestamp(key: String, flow: MutableStateFlow<Long?>) {
+        val now = System.currentTimeMillis()
+        timestampPrefs.edit().putLong(key, now).apply()
+        flow.value = now
+    }
     
     /**
      * Writes local data to the user-picked backup folder. Only the folder grant is needed (SAF),
@@ -70,6 +87,7 @@ class SyncService(private val context: Context) {
             
             backupInfo.fold(
                 onSuccess = { 
+                    recordTimestamp(KEY_LAST_UPLOAD, _lastUploadAt)
                     Result.success(SyncResult(
                         success = true,
                         message = "Successfully uploaded backup: ${it.fileName}",
@@ -98,6 +116,7 @@ class SyncService(private val context: Context) {
             jsonDataResult.fold(
                 onSuccess = { jsonData ->
                     validateAndMergeData(jsonData, conflictStrategy)
+                        .onSuccess { recordTimestamp(KEY_LAST_DOWNLOAD, _lastDownloadAt) }
                 },
                 onFailure = { Result.failure(it) }
             )
@@ -113,6 +132,7 @@ class SyncService(private val context: Context) {
         conflictStrategy: ConflictResolutionStrategy = ConflictResolutionStrategy.MERGE_BY_DATE
     ): Result<SyncResult> {
         return validateAndMergeData(jsonData, conflictStrategy)
+            .onSuccess { recordTimestamp(KEY_LAST_DOWNLOAD, _lastDownloadAt) }
     }
 
     suspend fun listAvailableBackups(): Result<List<BackupInfo>> {
@@ -394,4 +414,10 @@ class SyncService(private val context: Context) {
     fun hasBackupFolder(): Boolean = driveManager.hasBackupFolder()
 
     fun saveBackupFolder(uri: Uri) = driveManager.saveFolderUri(uri)
+
+    companion object {
+        private const val TIMESTAMP_PREFS = "backup_timestamps"
+        private const val KEY_LAST_UPLOAD = "last_upload_at"
+        private const val KEY_LAST_DOWNLOAD = "last_download_at"
+    }
 }

@@ -392,6 +392,8 @@ class ModernMainActivity : ComponentActivity() {
                     // ── Sync state ─────────────────────────────────────────────────
                     var isSignedIn by remember { mutableStateOf(startSignedIn) }
                     var hasBackupFolder by remember { mutableStateOf(syncService.hasBackupFolder()) }
+                    val lastBackupUploadAt by syncService.lastUploadAt.collectAsState()
+                    val lastBackupDownloadAt by syncService.lastDownloadAt.collectAsState()
                     var isSyncing by remember { mutableStateOf(false) }
                     var showSyncMessage by remember { mutableStateOf("") }
                     var showSyncError by remember { mutableStateOf(false) }
@@ -973,6 +975,8 @@ class ModernMainActivity : ComponentActivity() {
                                     isSignedIn = isSignedIn,
                                     hasBackupFolder = hasBackupFolder,
                                     onChooseBackupFolder = { folderPickerLauncher.launch(null) },
+                                    lastUploadAt = lastBackupUploadAt,
+                                    lastDownloadAt = lastBackupDownloadAt,
                                     onRestoreFromFile = { restoreFileLauncher.launch("*/*") },
                                     isDeveloperMode = isDeveloperMode,
                                     onToggleDevMode = {

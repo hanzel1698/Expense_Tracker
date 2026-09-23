@@ -29,7 +29,11 @@ import com.example.expensetracker.model.RecurrenceFrequency
 import com.example.expensetracker.model.RecurringExpense
 import com.example.expensetracker.ui.modern.components.*
 import com.example.expensetracker.ui.modern.theme.LocalAuroraExtras
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /**
  * Aurora settings — feature parity with the brutalist SettingsScreen:
@@ -71,6 +75,8 @@ fun ModernSettingsScreen(
     isSignedIn: Boolean,
     hasBackupFolder: Boolean,
     onChooseBackupFolder: () -> Unit,
+    lastUploadAt: Long? = null,
+    lastDownloadAt: Long? = null,
     isDeveloperMode: Boolean = false,
     onToggleDevMode: () -> Unit = {},
     onDevModePressStart: () -> Unit = {},
@@ -187,6 +193,11 @@ fun ModernSettingsScreen(
                         "• Upload saves your data to the selected folder\n• Download retrieves backups from it",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "Last upload: ${formatBackupTimestamp(lastUploadAt)}\nLast download: ${formatBackupTimestamp(lastDownloadAt)}",
+                        style = MaterialTheme.typography.bodySmall
                     )
                 }
 
@@ -1351,3 +1362,12 @@ fun ModernRecurringExpenseDialog(
         }
     }
 }
+
+private val backupTimestampFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a", Locale.ENGLISH)
+
+/** Formats epoch millis in IST (GMT+5:30), or "Never" when unset. */
+private fun formatBackupTimestamp(epochMillis: Long?): String =
+    epochMillis?.let {
+        Instant.ofEpochMilli(it).atZone(ZoneId.of("Asia/Kolkata")).format(backupTimestampFormatter) + " IST"
+    } ?: "Never"

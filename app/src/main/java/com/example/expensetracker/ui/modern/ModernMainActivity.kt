@@ -38,6 +38,7 @@ import com.example.expensetracker.model.RecurrenceFrequency
 import com.example.expensetracker.model.RecurringExpense
 import com.example.expensetracker.parseCsvLine
 import com.example.expensetracker.parseFlexibleDate
+import com.example.expensetracker.parseFlexibleTime
 import com.example.expensetracker.releasenotes.WhatsNewGate
 import com.example.expensetracker.sync.SyncService
 import com.example.expensetracker.ui.modern.components.AuroraConfirmDialog
@@ -218,6 +219,8 @@ class ModernMainActivity : ComponentActivity() {
                                     val isRecurringStr = if (fields.size > 13) fields[13] else ""
                                     val recurringFreq = if (fields.size > 14) fields[14] else ""
                                     val recurringEndDateStr = if (fields.size > 15) fields[15] else ""
+                                    // Appended last so CSVs made before the column existed still line up.
+                                    val time = if (fields.size > 16) parseFlexibleTime(fields[16]) else null
 
                                     val rowLabels = if (labelsStr.isNotBlank()) {
                                         labelsStr.split(",").map { it.trim() }.filter { it.isNotEmpty() }
@@ -299,6 +302,7 @@ class ModernMainActivity : ComponentActivity() {
                                             Expense(
                                                 groupId = groupId,
                                                 date = date,
+                                                time = time,
                                                 storeName = storeName,
                                                 amount = amount,
                                                 category = category,

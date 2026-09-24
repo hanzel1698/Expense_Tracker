@@ -129,6 +129,18 @@ fun ModernExpenseListScreen(
     var showDateFilterDialog by remember { mutableStateOf(false) }
 
     val dateFormatter = java.time.format.DateTimeFormatter.ofPattern("dd MMM yyyy", java.util.Locale.getDefault())
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val timeFormatter = remember {
+        java.time.format.DateTimeFormatter.ofPattern(
+            if (android.text.format.DateFormat.is24HourFormat(context)) "HH:mm" else "hh:mm a"
+        )
+    }
+    // Date, plus the optional time when one was recorded.
+    fun dateTimeText(expense: Expense): String =
+        expense.date.format(dateFormatter) + (expense.time?.let { " · ${it.format(timeFormatter)}" } ?: "")
+    // Newest first; within a day, timed entries by time and untimed ones after them.
+    val newestFirst = compareByDescending<Expense> { it.date }
+        .thenByDescending(nullsFirst<java.time.LocalTime>()) { it.time }
 
     val filteredExpenses = expenses.filter { expense ->
         val matchesDate = when {
@@ -163,12 +175,12 @@ fun ModernExpenseListScreen(
     val displayExpenses = filteredExpenses.filter { expense ->
         if (filterLabels.isNotEmpty() && filterLabels.intersect(expense.labels.toSet()).isEmpty()) return@filter false
         true
-    }.sortedByDescending { it.date }
+    }.sortedWith(newestFirst)
 
     val groupedExpenses = displayExpenses
         .groupBy { it.groupId }
         .values
-        .sortedByDescending { it.first().date }
+        .sortedWith(compareBy(newestFirst) { it.first() })
 
     Column(
         modifier = Modifier
@@ -217,7 +229,7 @@ fun ModernExpenseListScreen(
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        group.first().date.format(dateFormatter),
+                                        dateTimeText(group.first()),
                                         style = MaterialTheme.typography.labelMedium,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -452,7 +464,7 @@ fun ModernExpenseListScreen(
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Text(expense.date.format(dateFormatter), style = MaterialTheme.typography.bodyMedium)
+                                    Text(dateTimeText(expense), style = MaterialTheme.typography.bodyMedium)
                                 }
                             }
 
@@ -861,7 +873,7 @@ fun ModernExpenseListScreen(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            group.first().date.format(dateFormatter),
+                                            dateTimeText(group.first()),
                                             style = MaterialTheme.typography.labelSmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
@@ -927,7 +939,7 @@ fun ModernExpenseListScreen(
                                         overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        expense.date.format(dateFormatter) +
+                                        dateTimeText(expense) +
                                             if (expense.storeName.isNotEmpty() && expense.itemDescription.isNotEmpty())
                                                 "  ·  ${expense.storeName}" else "",
                                         style = MaterialTheme.typography.labelSmall,

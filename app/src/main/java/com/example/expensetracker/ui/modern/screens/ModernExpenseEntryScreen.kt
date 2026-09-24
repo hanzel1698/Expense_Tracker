@@ -9,6 +9,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -16,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -28,6 +30,7 @@ import androidx.compose.ui.window.Popup
 import com.example.expensetracker.model.Expense
 import com.example.expensetracker.ui.modern.components.*
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 /** One line item within a (possibly split) expense entry. */
@@ -93,6 +96,9 @@ fun ModernExpenseEntryScreen(
     val initialUnit = remember { expenseToEdit?.unit ?: groupToEdit?.firstOrNull()?.unit ?: "" }
     val initialDateValue = remember {
         initialDate ?: expenseToEdit?.date ?: groupToEdit?.firstOrNull()?.date ?: LocalDate.now()
+    }
+    val initialTimeValue = remember {
+        expenseToEdit?.time ?: groupToEdit?.firstOrNull()?.time
     }
     val initialSubTransactions = remember {
         groupToEdit?.mapIndexed { index, e ->
@@ -170,6 +176,10 @@ fun ModernExpenseEntryScreen(
     var selectedDate by remember { mutableStateOf(initialDateValue) }
     var showDatePicker by remember { mutableStateOf(false) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd/MM/yyyy") }
+    var selectedTime by remember { mutableStateOf(initialTimeValue) }
+    val context = LocalContext.current
+    val is24Hour = remember { android.text.format.DateFormat.is24HourFormat(context) }
+    val timeFormatter = remember { DateTimeFormatter.ofPattern(if (is24Hour) "HH:mm" else "hh:mm a") }
 
     var showAddCategoryDialog by remember { mutableStateOf(false) }
     var showAddSubcategoryDialog by remember { mutableStateOf(false) }
@@ -236,7 +246,8 @@ fun ModernExpenseEntryScreen(
             selectedLabels.toList() != initialSelectedLabels ||
             isSplit != initialIsSplit ||
             subTransactions != initialSubTransactions ||
-            selectedDate != initialDateValue
+            selectedDate != initialDateValue ||
+            selectedTime != initialTimeValue
     }
 
     // ── Calculator helpers (same math as the brutalist screen) ───────────────
@@ -528,6 +539,7 @@ fun ModernExpenseEntryScreen(
         }
 
         val expenseDate = selectedDate
+        val expenseTime = selectedTime
         val sharedGroupId = expenseToEdit?.groupId
             ?: groupToEdit?.firstOrNull()?.groupId
             ?: java.util.UUID.randomUUID().toString()
@@ -538,6 +550,7 @@ fun ModernExpenseEntryScreen(
                     id = expenseIdForIndex(index),
                     groupId = sharedGroupId,
                     date = expenseDate,
+                    time = expenseTime,
                     storeName = storeName,
                     location = location,
                     amount = finalAmount,
@@ -564,6 +577,7 @@ fun ModernExpenseEntryScreen(
                     id = expenseIdForIndex(0),
                     groupId = sharedGroupId,
                     date = expenseDate,
+                    time = expenseTime,
                     storeName = storeName,
                     location = location,
                     amount = finalAmount,
@@ -589,6 +603,7 @@ fun ModernExpenseEntryScreen(
                     id = expenseIdForIndex(0),
                     groupId = sharedGroupId,
                     date = expenseDate,
+                    time = expenseTime,
                     storeName = storeName,
                     location = location,
                     amount = finalAmount,
@@ -918,20 +933,56 @@ fun ModernExpenseEntryScreen(
             }
         }
 
-        // Date
-        Box(
+        // Date + optional time
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { showDatePicker = true }
-                .padding(bottom = 10.dp)
+                .padding(bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            AuroraTextField(
-                value = selectedDate.format(dateFormatter),
-                onValueChange = { },
-                label = "Date",
-                readOnly = true,
-                enabled = false
-            )
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { showDatePicker = true }
+            ) {
+                AuroraTextField(
+                    value = selectedDate.format(dateFormatter),
+                    onValueChange = { },
+                    label = "Date",
+                    readOnly = true,
+                    enabled = false
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable {
+                        // The platform dialog shows the device's own clock-face time picker.
+                        val start = selectedTime ?: LocalTime.now()
+                        android.app.TimePickerDialog(
+                            context,
+                            { _, hour, minute -> selectedTime = LocalTime.of(hour, minute) },
+                            start.hour,
+                            start.minute,
+                            is24Hour
+                        ).show()
+                    }
+            ) {
+                AuroraTextField(
+                    value = selectedTime?.format(timeFormatter) ?: "",
+                    onValueChange = { },
+                    label = "Time (optional)",
+                    readOnly = true,
+                    enabled = false,
+                    trailingIcon = selectedTime?.let {
+                        {
+                            IconButton(onClick = { selectedTime = null }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear time")
+                            }
+                        }
+                    }
+                )
+            }
         }
 
         // Store with suggestions

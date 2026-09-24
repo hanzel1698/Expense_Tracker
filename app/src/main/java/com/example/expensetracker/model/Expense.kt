@@ -1,12 +1,14 @@
 package com.example.expensetracker.model
 
 import java.time.LocalDate
+import java.time.LocalTime
 import java.util.UUID
 
 data class Expense(
     val id: String = UUID.randomUUID().toString(),
     val groupId: String = UUID.randomUUID().toString(),
     val date: LocalDate,
+    val time: LocalTime? = null,
     val storeName: String,
     val location: String = "",
     val amount: Double,

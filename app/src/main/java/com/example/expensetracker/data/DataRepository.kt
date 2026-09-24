@@ -12,6 +12,7 @@ import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import java.io.File
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 
@@ -47,6 +48,7 @@ data class AppData(
 object DataRepository {
     private const val FILE_NAME = "expense_data.json"
     private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+    private val timeFormatter = DateTimeFormatter.ofPattern("HH:mm")
 
     // ── LocalDate adapter ──────────────────────────────────────────────────────
     private val localDateAdapter = object : TypeAdapter<LocalDate>() {
@@ -76,6 +78,7 @@ object DataRepository {
             out.name("id").value(value.id)
             out.name("groupId").value(value.groupId)
             out.name("date").value(value.date.format(dateFormatter))
+            if (value.time != null) out.name("time").value(value.time.format(timeFormatter))
             out.name("storeName").value(value.storeName)
             out.name("location").value(value.location)
             out.name("amount").value(value.amount)
@@ -98,6 +101,7 @@ object DataRepository {
             return try {
                 `in`.beginObject()
                 var id: String? = null; var groupId: String? = null; var date: LocalDate? = null
+                var time: LocalTime? = null
                 var storeName: String? = null; var location = ""; var amount: Double? = null
                 var category: String? = null; var subcategory: String? = null
                 var itemDescription = ""; var labels: List<String> = emptyList()
@@ -113,6 +117,8 @@ object DataRepository {
                             date = if (dateStr == null || dateStr == "0000-00-00" || dateStr.isBlank()) LocalDate.now()
                             else try { LocalDate.parse(dateStr, dateFormatter) } catch (e: Exception) { LocalDate.now() }
                         }
+                        "time" -> time = if (`in`.peek() == JsonToken.NULL) { `in`.nextNull(); null }
+                            else try { LocalTime.parse(`in`.nextString()) } catch (e: Exception) { null }
                         "storeName" -> storeName = `in`.nextString()
                         "location" -> location = `in`.nextString() ?: ""
                         "amount" -> amount = `in`.nextDouble()
@@ -141,6 +147,7 @@ object DataRepository {
                     id = id ?: UUID.randomUUID().toString(),
                     groupId = groupId ?: UUID.randomUUID().toString(),
                     date = date ?: LocalDate.now(),
+                    time = time,
                     storeName = storeName ?: "",
                     location = location,
                     amount = amount ?: 0.0,
